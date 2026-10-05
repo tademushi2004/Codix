@@ -585,7 +585,7 @@ const AudioSys = {
         let noteIdx = 0;
         
         this.bgmGain = this.ctx.createGain();
-        this.bgmGain.gain.value = 0.03; // Very quiet background
+        this.bgmGain.gain.value = 0.15; // Increased volume
         this.bgmGain.connect(this.ctx.destination);
         
         this.bgmInterval = setInterval(() => {
@@ -642,7 +642,7 @@ const EVOLUTION = {
 };
 
 // EXP requirements per stage
-const STAGE_EXP = { 1: 100, 2: 200, 3: 350, 4: 550, 5: 800 };
+const STAGE_EXP = { 1: 10, 2: 20, 3: 35, 4: 55, 5: 80 };
 
 // Stage clear evaluation
 const CLEAR_GRADES = [
@@ -1162,11 +1162,55 @@ function spawnObject() {
     
     const entry = GameState.entryPoints[Math.floor(Math.random() * GameState.entryPoints.length)];
     
+    let spawnCol = entry.col;
+    let spawnRow = entry.row;
+    
+    // Find valid empty spots for static or moving objects
+    let validSpots = [];
+    for (let r = 0; r < 15; r++) {
+        for (let c = 0; c < 20; c++) {
+            if (GameState.maze[r] && GameState.maze[r][c] === 0) {
+                const isEdge = (r === 0 || r === 14 || c === 0 || c === 19);
+                let valid = true;
+                
+                if (motion === 'static') {
+                    // Check distance from player to avoid trapping
+                    const dx = c + 0.5 - GameState.player.x;
+                    const dy = r + 0.5 - GameState.player.y;
+                    if (Math.sqrt(dx*dx + dy*dy) < 3.0) valid = false;
+                } else {
+                    // Moving objects prefer edges for initial spawn
+                    if (!isEdge) valid = false;
+                }
+                
+                // Check distance from existing objects to prevent overlap
+                if (valid) {
+                    for (const o of GameState.objects) {
+                        const dx = c + 0.5 - o.x;
+                        const dy = r + 0.5 - o.y;
+                        if (Math.sqrt(dx*dx + dy*dy) < 2.0) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                }
+                
+                if (valid) validSpots.push({c, r});
+            }
+        }
+    }
+    
+    if (validSpots.length > 0) {
+        const spot = validSpots[Math.floor(Math.random() * validSpots.length)];
+        spawnCol = spot.c;
+        spawnRow = spot.r;
+    }
+    
     const obj = {
         id: Math.random().toString(36).substr(2, 9),
         shape, color, texture, motion,
-        x: entry.col + 0.5,
-        y: entry.row + 0.5,
+        x: spawnCol + 0.5,
+        y: spawnRow + 0.5,
         lifetime: CONFIG.OBJECT_LIFETIME,
         vx: 0, vy: 0
     };
@@ -1278,8 +1322,9 @@ function applyHeal(expAmount) {
 
 function calculateExp(shape, motion) {
     const sides = SHAPE_SIDES[shape] || 3;
+    const base = sides - 2; // Tri=1, Sqr=2, Pent/Cir=3, Hex/Star=4
     const mult = (motion === 'moving') ? 2 : 1;
-    return sides * 5 * mult;
+    return base * mult;
 }
 
 function continueGame() {
@@ -1461,9 +1506,9 @@ function drawShape(ctx, x, y, size, shape, fillColor, texture, borderPattern) {
     if (texture === 'striped') {
         ctx.save();
         ctx.clip();
-        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-        ctx.lineWidth = 1;
-        for (let ly = y - hs; ly <= y + hs; ly += 3) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.lineWidth = 3;
+        for (let ly = y - hs; ly <= y + hs; ly += 6) {
             ctx.beginPath();
             ctx.moveTo(x - hs, ly);
             ctx.lineTo(x + hs, ly);
@@ -1643,9 +1688,22 @@ function renderHUD() {
     document.getElementById('stage-number').textContent = GameState.stage;
 
     // EXP bar
-    const expReq = STAGE_EXP[GameState.stage] || 100;
+    const expReq = STAGE_EXP[GameState.stage] || 10;
     const expPct = Math.min(100, (GameState.exp / expReq) * 100);
+    const outerBar = document.getElementById('exp-bar-outer');
+    outerBar.style.backgroundImage = 'repeating-linear-gradient(90deg, transparent, transparent 9.5%, rgba(255,255,255,0.3) 9.5%, rgba(255,255,255,0.3) 10%)';
     document.getElementById('exp-bar-inner').style.width = expPct + '%';
+    
+    let expText = document.getElementById('exp-text-display');
+    if (!expText) {
+        expText = document.createElement('div');
+        expText.id = 'exp-text-display';
+        expText.style.fontSize = '8px';
+        expText.style.color = 'var(--text-accent)';
+        expText.style.fontFamily = "'Press Start 2P', monospace";
+        document.getElementById('exp-container').appendChild(expText);
+    }
+    expText.textContent = `${Math.floor(GameState.exp)}/${expReq}`;
 
     // Player shape display
     const shapeCanvas = document.getElementById('player-shape-display');
@@ -1844,10 +1902,12 @@ function setupBoardInteraction() {
         if (GameState.phase !== 'playing') return;
         const rect = canvas.getBoundingClientRect();
         // Support touch and mouse
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        boardMouse.x = clientX - rect.left;
-        boardMouse.y = clientY - rect.top;
+        boardMouse.x = (clientX - rect.left) * scaleX;
+        boardMouse.y = (clientY - rect.top) * scaleY;
         
         if (GameState.dragState) {
             if (GameState.dragState.type === 'chip') {
@@ -1871,10 +1931,12 @@ function setupBoardInteraction() {
     const handleDown = (e) => {
         if (GameState.phase !== 'playing') return;
         const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        boardMouse.x = clientX - rect.left;
-        boardMouse.y = clientY - rect.top;
+        boardMouse.x = (clientX - rect.left) * scaleX;
+        boardMouse.y = (clientY - rect.top) * scaleY;
         
         const gridX = Math.floor(boardMouse.x / CONFIG.CELL_SIZE);
         const gridY = Math.floor(boardMouse.y / CONFIG.CELL_SIZE);
@@ -1899,10 +1961,12 @@ function setupBoardInteraction() {
         
         if (GameState.dragState.type === 'tray_part') {
             const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
             const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
             const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-            const bx = clientX - rect.left;
-            const by = clientY - rect.top;
+            const bx = (clientX - rect.left) * scaleX;
+            const by = (clientY - rect.top) * scaleY;
             
             if (bx >= 0 && bx <= canvas.width && by >= 0 && by <= canvas.height) {
                 const gridX = Math.floor(bx / CONFIG.CELL_SIZE);
@@ -1916,10 +1980,12 @@ function setupBoardInteraction() {
             }
         } else if (GameState.dragState.type === 'wire') {
             const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
             const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
             const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
-            const bx = clientX - rect.left;
-            const by = clientY - rect.top;
+            const bx = (clientX - rect.left) * scaleX;
+            const by = (clientY - rect.top) * scaleY;
             
             if (bx >= 0 && bx <= canvas.width && by >= 0 && by <= canvas.height) {
                 const gridX = Math.floor(bx / CONFIG.CELL_SIZE);
