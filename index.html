@@ -572,6 +572,48 @@ const AudioSys = {
                 osc.stop(t + 0.2);
                 break;
         }
+    },
+    bgmGain: null,
+    bgmInterval: null,
+    startBGM() {
+        if (!this.ctx || this.bgmInterval) return;
+        
+        const notes = [
+            261.63, 329.63, 392.00, 523.25, // C4, E4, G4, C5
+            392.00, 329.63, 261.63, 196.00  // G4, E4, C4, G3
+        ];
+        let noteIdx = 0;
+        
+        this.bgmGain = this.ctx.createGain();
+        this.bgmGain.gain.value = 0.03; // Very quiet background
+        this.bgmGain.connect(this.ctx.destination);
+        
+        this.bgmInterval = setInterval(() => {
+            if (GameState.phase !== 'playing') return;
+            
+            const t = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(notes[noteIdx], t);
+            
+            const env = this.ctx.createGain();
+            env.gain.setValueAtTime(0.1, t);
+            env.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+            
+            osc.connect(env);
+            env.connect(this.bgmGain);
+            
+            osc.start(t);
+            osc.stop(t + 0.2);
+            
+            noteIdx = (noteIdx + 1) % notes.length;
+        }, 250); // 250ms per note
+    },
+    stopBGM() {
+        if (this.bgmInterval) {
+            clearInterval(this.bgmInterval);
+            this.bgmInterval = null;
+        }
     }
 };
 
@@ -1214,6 +1256,7 @@ function applyDamage() {
     if (GameState.hp <= 0) {
         GameState.hp = 0;
         GameState.phase = 'gameover';
+        AudioSys.stopBGM();
         showGameOverScreen();
     }
 }
@@ -1300,10 +1343,12 @@ function showStageClearScreen() {
             screen.style.display = 'none';
             if (GameState.stage >= 5) {
                 GameState.phase = 'gameclear';
+                AudioSys.stopBGM();
                 showGameClearScreen();
             } else {
                 loadStage(GameState.stage + 1);
                 GameState.phase = 'playing';
+                AudioSys.startBGM();
             }
         });
     }
@@ -2182,6 +2227,7 @@ function init() {
 
 function startGame() {
     AudioSys.init();
+    AudioSys.startBGM();
     document.getElementById('title-screen').style.display = 'none';
     document.getElementById('game-container').style.display = 'flex';
 
