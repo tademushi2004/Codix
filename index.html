@@ -1,0 +1,2201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CODIX</title>
+    <meta name="description" content="CODIX - A brain science puzzle game based on the Thousand Brains Theory">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+/* ========== 1. RESET & BASE ========== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+    /* CUD Color Palette */
+    --color-orange: #E69F00;
+    --color-cyan: #0072B2;
+    --color-magenta: #CC79A7;
+
+    /* UI Colors */
+    --bg-primary: #0a0a0f;
+    --bg-panel: #0d1117;
+    --bg-maze: #000000;
+    --bg-board: #0a1a0a;
+    --wall-color: #1a1a3e;
+    --wall-border: #2a2a5e;
+    --grid-dot: #0f2f0f;
+    --wire-green: #00ff41;
+    --wire-yellow: #ffd700;
+    --text-primary: #e0e0e0;
+    --text-dim: #606060;
+    --text-accent: #00ff41;
+    --hp-red: #ff3333;
+    --hp-empty: #331111;
+    --exp-fill: #00ccff;
+    --exp-bg: #0a1a2a;
+    --border-retro: #1a3a1a;
+    --scanline-opacity: 0.04;
+
+    /* Layout */
+    --hud-height: 56px;
+    --tray-height: 100px;
+    --font-pixel: 'Press Start 2P', monospace;
+}
+
+html, body {
+    width: 100%; height: 100%;
+    background: var(--bg-primary);
+    font-family: var(--font-pixel);
+    color: var(--text-primary);
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* ========== 2. MAIN LAYOUT ========== */
+#game-container {
+    display: flex;
+    width: 100%; height: 100vh;
+    position: relative;
+}
+
+.panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+#left-panel {
+    border-right: 2px solid var(--wall-border);
+    background: var(--bg-panel);
+}
+
+#right-panel {
+    background: var(--bg-board);
+}
+
+/* ========== 3. HUD (Left Panel Top Bar) ========== */
+#left-hud {
+    height: var(--hud-height);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    background: linear-gradient(180deg, #111118 0%, #0d0d14 100%);
+    border-bottom: 1px solid var(--wall-border);
+    flex-shrink: 0;
+    gap: 8px;
+}
+
+#hp-display {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.heart {
+    width: 16px; height: 16px;
+    position: relative;
+}
+
+.heart::before {
+    content: '';
+    position: absolute;
+    width: 100%; height: 100%;
+    background: var(--hp-red);
+    clip-path: polygon(50% 100%, 0% 35%, 12% 12%, 25% 0%, 40% 0%, 50% 15%, 60% 0%, 75% 0%, 88% 12%, 100% 35%);
+    image-rendering: pixelated;
+}
+
+.heart.empty::before {
+    background: var(--hp-empty);
+}
+
+.heart.half::before {
+    background: linear-gradient(90deg, var(--hp-red) 50%, var(--hp-empty) 50%);
+}
+
+#stage-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 8px;
+    color: var(--text-dim);
+}
+
+#stage-number {
+    color: var(--text-accent);
+    font-size: 10px;
+}
+
+#player-shape-display {
+    width: 20px; height: 20px;
+}
+
+#exp-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#exp-label {
+    font-size: 7px;
+    color: var(--text-dim);
+}
+
+#exp-bar-outer {
+    width: 80px; height: 10px;
+    background: var(--exp-bg);
+    border: 1px solid #1a3a4a;
+    position: relative;
+    overflow: hidden;
+}
+
+#exp-bar-inner {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #005577, var(--exp-fill));
+    transition: width 0.3s ease;
+    position: relative;
+}
+
+#exp-bar-inner::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 4px; height: 100%;
+    background: rgba(255,255,255,0.3);
+}
+
+/* ========== 4. MAZE CANVAS ========== */
+#maze-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-maze);
+    position: relative;
+}
+
+#maze-canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+/* CRT Scanline Overlay */
+#maze-wrapper::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,var(--scanline-opacity)) 2px,
+        rgba(0,0,0,var(--scanline-opacity)) 4px
+    );
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* Vignette */
+#maze-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.4) 100%);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* ========== 5. RIGHT PANEL ========== */
+#right-hud {
+    height: var(--hud-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 12px;
+    background: linear-gradient(180deg, #0a150a 0%, #081208 100%);
+    border-bottom: 1px solid var(--border-retro);
+    flex-shrink: 0;
+    font-size: 8px;
+    color: var(--text-accent);
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px rgba(0,255,65,0.3);
+}
+
+/* Parts Tray */
+#parts-tray {
+    height: var(--tray-height);
+    padding: 6px 8px;
+    background: linear-gradient(180deg, #0d1a0d 0%, #0a140a 100%);
+    border-bottom: 1px solid var(--border-retro);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+#tray-label {
+    font-size: 6px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+}
+
+#tray-blocks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.tray-section {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+    padding-right: 6px;
+    border-right: 1px solid var(--border-retro);
+}
+
+.tray-section:last-child {
+    border-right: none;
+}
+
+.tray-block {
+    width: 28px; height: 28px;
+    border: 1px solid #2a3a2a;
+    background: #0a120a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    position: relative;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.tray-block:hover {
+    border-color: var(--wire-green);
+    box-shadow: 0 0 6px rgba(0,255,65,0.2);
+}
+
+.tray-block canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+#new-chip-btn {
+    font-family: var(--font-pixel);
+    font-size: 6px;
+    color: var(--text-accent);
+    background: #0a1a0a;
+    border: 1px solid var(--wire-green);
+    padding: 4px 8px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: background 0.15s, box-shadow 0.15s;
+    margin-left: 4px;
+    white-space: nowrap;
+}
+
+#new-chip-btn:hover {
+    background: #0f2a0f;
+    box-shadow: 0 0 8px rgba(0,255,65,0.3);
+}
+
+/* Circuit Board */
+#board-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 8px;
+}
+
+#board-canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 1px solid var(--border-retro);
+}
+
+/* CRT effect on board */
+#board-wrapper::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(0,20,0,var(--scanline-opacity)) 3px,
+        rgba(0,20,0,var(--scanline-opacity)) 6px
+    );
+    pointer-events: none;
+}
+
+/* ========== 6. TITLE SCREEN ========== */
+#title-screen {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    gap: 40px;
+}
+
+#title-logo {
+    font-family: var(--font-pixel);
+    font-size: 48px;
+    color: var(--text-accent);
+    text-shadow:
+        0 0 20px rgba(0,255,65,0.4),
+        0 0 40px rgba(0,255,65,0.2),
+        0 4px 0 #003300;
+    letter-spacing: 12px;
+    animation: titleGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes titleGlow {
+    from { text-shadow: 0 0 20px rgba(0,255,65,0.4), 0 0 40px rgba(0,255,65,0.2), 0 4px 0 #003300; }
+    to { text-shadow: 0 0 30px rgba(0,255,65,0.6), 0 0 60px rgba(0,255,65,0.3), 0 4px 0 #003300; }
+}
+
+#title-instructions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    font-size: 8px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+}
+
+#title-instructions span {
+    opacity: 0;
+    animation: fadeInUp 0.5s ease forwards;
+}
+
+#title-instructions span:nth-child(1) { animation-delay: 0.5s; }
+#title-instructions span:nth-child(2) { animation-delay: 0.8s; }
+#title-instructions span:nth-child(3) { animation-delay: 1.1s; }
+#title-instructions span:nth-child(4) { animation-delay: 1.4s; }
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+#press-start {
+    font-family: var(--font-pixel);
+    font-size: 12px;
+    color: var(--text-accent);
+    animation: blink 1s step-start infinite;
+    cursor: pointer;
+    padding: 12px 24px;
+    border: 1px solid transparent;
+    transition: border-color 0.2s;
+    letter-spacing: 3px;
+}
+
+#press-start:hover {
+    border-color: var(--wire-green);
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
+/* Title screen scanlines */
+#title-screen::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.06) 2px,
+        rgba(0,0,0,0.06) 4px
+    );
+    pointer-events: none;
+}
+
+/* ========== 7. RESPONSIVE ========== */
+@media (max-width: 900px) {
+    #game-container { flex-direction: column; }
+    .panel { flex: none; height: 50vh; }
+    #left-panel { border-right: none; border-bottom: 2px solid var(--wall-border); }
+}
+
+@media (max-width: 600px) {
+    :root { --hud-height: 44px; --tray-height: 80px; }
+    #title-logo { font-size: 28px; letter-spacing: 6px; }
+    #press-start { font-size: 9px; }
+    .heart { width: 12px; height: 12px; }
+    #exp-bar-outer { width: 50px; }
+}
+    </style>
+</head>
+<body>
+
+<!-- ========== TITLE SCREEN ========== -->
+<div id="title-screen">
+    <div id="title-logo">CODIX</div>
+    <div id="title-instructions">
+        <span>OBSERVE</span>
+        <span>REMEMBER</span>
+        <span>WIRE</span>
+        <span>EVOLVE</span>
+    </div>
+    <div id="press-start">PRESS START</div>
+</div>
+
+<!-- ========== GAME SCREEN ========== -->
+<div id="game-container" style="display:none;">
+    <!-- LEFT PANEL: WHERE SPACE -->
+    <div id="left-panel" class="panel">
+        <div id="left-hud">
+            <div id="hp-display"></div>
+            <div id="stage-info">
+                <span>STAGE</span>
+                <span id="stage-number">1</span>
+                <canvas id="player-shape-display" width="20" height="20"></canvas>
+            </div>
+            <div id="exp-container">
+                <span id="exp-label">EXP</span>
+                <div id="exp-bar-outer">
+                    <div id="exp-bar-inner"></div>
+                </div>
+            </div>
+        </div>
+        <div id="maze-wrapper">
+            <canvas id="maze-canvas"></canvas>
+        </div>
+    </div>
+
+    <!-- RIGHT PANEL: WHAT SPACE -->
+    <div id="right-panel" class="panel">
+        <div id="right-hud">WHAT SPACE</div>
+        <div id="parts-tray">
+            <div id="tray-label">PARTS TRAY</div>
+            <div id="tray-blocks"></div>
+        </div>
+        <div id="board-wrapper">
+            <canvas id="board-canvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+// ================================================================
+//  CODIX — Game Engine
+//  Step 1: Architecture Layer
+// ================================================================
+
+'use strict';
+
+// ========== 1. CONSTANTS & CONFIG ==========
+
+const CONFIG = {
+    MAZE_COLS: 20,
+    MAZE_ROWS: 15,
+    BOARD_COLS: 16,
+    BOARD_ROWS: 12,
+    TILE_SIZE: 24,         // maze tile size in pixels
+    CELL_SIZE: 32,         // circuit board cell size
+    SPRITE_SIZE: 16,       // object sprite size
+    PLAYER_SPEED: 1.5,     // tiles per second
+    MAX_HP: 5,
+    INVINCIBLE_DURATION: 2000, // ms
+    OBJECT_SPAWN_INTERVAL: 4000,
+    OBJECT_LIFETIME: 25000,    // ms
+};
+
+// ========== 11. AUDIO SYSTEM ==========
+const AudioSys = {
+    ctx: null,
+    init() {
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    },
+    play(type) {
+        if (!this.ctx) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        
+        switch (type) {
+            case 'damage':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, t);
+                osc.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+                gain.gain.setValueAtTime(0.5, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+                osc.start(t);
+                osc.stop(t + 0.3);
+                break;
+            case 'heal':
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(400, t);
+                osc.frequency.setValueAtTime(600, t + 0.1);
+                gain.gain.setValueAtTime(0.2, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+                osc.start(t);
+                osc.stop(t + 0.3);
+                break;
+            case 'wire':
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(800, t);
+                osc.frequency.exponentialRampToValueAtTime(1200, t + 0.1);
+                gain.gain.setValueAtTime(0.1, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
+                osc.start(t);
+                osc.stop(t + 0.1);
+                break;
+            case 'error':
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, t);
+                osc.frequency.setValueAtTime(80, t + 0.1);
+                gain.gain.setValueAtTime(0.2, t);
+                gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+                osc.start(t);
+                osc.stop(t + 0.2);
+                break;
+        }
+    }
+};
+
+const CUD_COLORS = {
+    orange:  '#E69F00',
+    cyan:    '#0072B2',
+    magenta: '#CC79A7',
+};
+
+const SHAPES = ['triangle', 'square', 'circle', 'star'];
+const COLORS = ['orange', 'cyan', 'magenta'];
+const TEXTURES = ['solid', 'striped'];
+const MOTIONS = ['static', 'moving'];
+const VALENCES = ['harmful', 'beneficial', 'neutral'];
+
+// Shape sides (for EXP calculation)
+const SHAPE_SIDES = { triangle: 3, square: 4, circle: 5, star: 6 };
+
+// Evolution table: stage -> { shape, maxPins }
+const EVOLUTION = {
+    1: { shape: 'triangle', maxPins: 3 },
+    2: { shape: 'triangle', maxPins: 3 },
+    3: { shape: 'square',   maxPins: 4 },
+    4: { shape: 'pentagon',  maxPins: 5 },
+    5: { shape: 'pentagon',  maxPins: 5 },
+};
+
+// EXP requirements per stage
+const STAGE_EXP = { 1: 100, 2: 200, 3: 350, 4: 550, 5: 800 };
+
+// Stage clear evaluation
+const CLEAR_GRADES = [
+    { grade: 'S', stars: 3, maxContinues: 0, minHP: 4 },
+    { grade: 'A', stars: 2, maxContinues: 0, minHP: 2 },
+    { grade: 'B', stars: 1, maxContinues: 1, minHP: 0 },
+    { grade: 'C', stars: 0, maxContinues: Infinity, minHP: 0 },
+];
+
+// Detection radius per evolution stage (in tiles)
+const DETECT_RADIUS = { triangle: 3, square: 5, pentagon: 7 };
+
+
+// ========== 2. MAZE DATA (5 stages × 20×15) ==========
+// 0 = path, 1 = wall
+
+const MAZES = [
+    // Stage 1: Simple, wide corridors, no dead ends
+    [
+        [1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,1,0,1,1,0,1,0,1,0,1,1,0,1,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,0,1,1,0,1,0,1,0,1,0,1,1,0,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,0,0,1],
+        [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        [1,0,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,0,1,1,0,1,0,1,0,1,0,1,1,0,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,0,1,1,0,1,1,0,1,0,1,0,1,1,0,1,1,0,0,1],
+        [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1],
+    ],
+    // Stage 2: More intersections, narrower corridors
+    [
+        [1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
+        [1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
+        [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1],
+        [1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,1],
+        [1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,1,0,1],
+        [0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0],
+        [1,1,1,0,1,1,1,0,1,0,1,0,1,1,1,0,1,1,0,1],
+        [1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,1],
+        [1,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,1,0,1,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
+        [1,0,1,0,1,0,1,1,1,0,1,1,1,0,1,0,1,1,0,1],
+        [1,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1],
+    ],
+    // Stage 3: Medium complexity, multiple paths
+    [
+        [1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1],
+        [1,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1],
+        [1,0,1,1,1,0,1,0,1,1,1,1,0,1,0,1,1,1,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,1,0,1,1,0,1,1,0,1,1,0,1,1,0,0,1,0,1],
+        [1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
+        [1,1,1,0,0,1,1,1,0,1,0,1,1,1,0,0,1,1,1,1],
+        [0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],
+        [1,1,1,0,0,1,1,1,0,1,0,1,1,1,0,0,1,1,1,1],
+        [1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
+        [1,0,1,0,1,1,0,1,1,0,1,1,0,1,1,0,0,1,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+        [1,0,1,1,1,0,1,0,1,1,1,1,0,1,0,1,1,1,0,1],
+        [1,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1],
+        [1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1],
+    ],
+    // Stage 4: Complex, many crossings
+    [
+        [1,1,1,1,1,1,0,1,1,0,1,1,0,1,1,1,1,1,1,1],
+        [1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,0,1],
+        [1,0,1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,1,0,1],
+        [1,0,1,1,1,0,1,1,0,1,0,1,1,0,1,0,0,0,0,1],
+        [1,0,0,0,1,0,0,0,0,1,0,0,0,0,1,1,1,0,1,1],
+        [1,1,1,0,0,0,1,1,0,0,0,1,1,0,0,0,0,0,0,1],
+        [0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,1,1,0,1],
+        [1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,0,0,0,1],
+        [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,1],
+        [1,0,1,1,1,0,1,1,0,1,0,1,1,0,0,0,0,0,0,1],
+        [1,0,0,0,1,0,0,0,0,1,0,0,0,0,1,1,1,0,1,1],
+        [1,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,0,0,0,1],
+        [1,0,1,1,1,0,1,0,0,0,0,0,1,0,1,0,1,1,0,1],
+        [1,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0],
+        [1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1],
+    ],
+    // Stage 5: Most complex, dead ends present
+    [
+        [1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,1],
+        [1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,1],
+        [1,0,1,1,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,1],
+        [1,0,0,0,0,0,1,0,1,0,1,0,1,0,0,0,0,1,0,1],
+        [1,1,1,0,1,0,1,0,1,0,1,0,0,0,1,0,1,1,0,1],
+        [1,0,0,0,1,0,0,0,1,0,1,1,1,0,1,0,0,0,0,1],
+        [1,0,1,1,1,1,1,0,0,0,0,0,1,0,1,1,1,0,1,1],
+        [0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0],
+        [1,0,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,0,1,1],
+        [1,0,0,0,1,0,0,0,1,0,0,0,1,0,1,0,0,0,0,1],
+        [1,1,1,0,1,0,1,0,1,0,1,1,1,0,0,0,1,1,0,1],
+        [1,0,0,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,0,1],
+        [1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,0,1,0,1],
+        [1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,1],
+        [1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,0,1,1,1],
+    ],
+];
+
+// Entry points per stage (border cells that are 0)
+function findEntryPoints(maze) {
+    const entries = [];
+    const rows = maze.length, cols = maze[0].length;
+    for (let c = 0; c < cols; c++) {
+        if (maze[0][c] === 0) entries.push({ row: 0, col: c });
+        if (maze[rows - 1][c] === 0) entries.push({ row: rows - 1, col: c });
+    }
+    for (let r = 1; r < rows - 1; r++) {
+        if (maze[r][0] === 0) entries.push({ row: r, col: 0 });
+        if (maze[r][cols - 1] === 0) entries.push({ row: r, col: cols - 1 });
+    }
+    return entries;
+}
+
+// Find a valid starting position for the player (center-ish path cell)
+function findPlayerStart(maze) {
+    const rows = maze.length, cols = maze[0].length;
+    const cr = Math.floor(rows / 2), cc = Math.floor(cols / 2);
+    // spiral outward from center to find a path
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const tr = (cr + r) % rows, tc = (cc + c) % cols;
+            if (maze[tr][tc] === 0) return { row: tr, col: tc };
+        }
+    }
+    return { row: cr, col: cc };
+}
+
+
+// ========== 3. GAME STATE ==========
+
+const GameState = {
+    phase: 'title',  // 'title' | 'playing' | 'gameover' | 'stageclear' | 'gameclear'
+    stage: 1,
+    hp: CONFIG.MAX_HP,
+    exp: 0,
+    continues: 0,
+    playerShape: 'triangle',
+    maxPins: 3,
+    isInvincible: false,
+    invincibleTimer: 0,
+
+    // Player position (in tile coords, fractional)
+    player: { x: 0, y: 0, dir: 'right', speed: CONFIG.PLAYER_SPEED },
+
+    // AI state
+    aiState: 'wander', // 'wander' | 'informed'
+    detectRadius: DETECT_RADIUS.triangle,
+
+    // Objects on the maze
+    objects: [],
+
+    // Wiring data (chips and connections)
+    chips: [],
+    nextChipId: 1,
+
+    // Valence assignment (random per game, keyed by attribute combo string)
+    valenceMap: {},
+
+    // Current maze
+    maze: null,
+    entryPoints: [],
+
+    // Timing
+    lastTimestamp: 0,
+    objectSpawnTimer: 0,
+    objectSpawnInterval: 6000, // ms
+
+    // Stage attribute pool
+    stagePool: null,
+};
+
+// Initialize/reset game state for a new game
+function resetGameState() {
+    GameState.stage = 1;
+    GameState.hp = CONFIG.MAX_HP;
+    GameState.exp = 0;
+    GameState.continues = 0;
+    GameState.playerShape = EVOLUTION[1].shape;
+    GameState.maxPins = EVOLUTION[1].maxPins;
+    GameState.isInvincible = false;
+    GameState.invincibleTimer = 0;
+    GameState.aiState = 'wander';
+    GameState.detectRadius = DETECT_RADIUS[GameState.playerShape] || 3;
+    GameState.objects = [];
+    GameState.chips = [];
+    GameState.nextChipId = 1;
+    GameState.objectSpawnTimer = 0;
+
+    loadStage(1);
+    shuffleValences();
+}
+
+function loadStage(stageNum) {
+    GameState.stage = stageNum;
+    GameState.maze = MAZES[stageNum - 1];
+    GameState.entryPoints = findEntryPoints(GameState.maze);
+    GameState.exp = 0;
+    GameState.objects = [];
+    GameState.objectSpawnTimer = 0;
+
+    const evo = EVOLUTION[stageNum];
+    GameState.playerShape = evo.shape;
+    GameState.maxPins = evo.maxPins;
+    GameState.detectRadius = DETECT_RADIUS[evo.shape] || 3;
+
+    const start = findPlayerStart(GameState.maze);
+    GameState.player.x = start.col + 0.5;
+    GameState.player.y = start.row + 0.5;
+    GameState.player.dir = 'right';
+}
+
+// Stage Attribute Pools
+const STAGE_POOLS = {
+    1: { shapes: ['triangle', 'square', 'circle'], colors: ['orange'], textures: ['solid'], motions: ['static'] },
+    2: { shapes: ['triangle', 'square'], colors: ['orange', 'cyan'], textures: ['solid'], motions: ['static'] },
+    3: { shapes: ['triangle', 'square', 'circle'], colors: ['orange', 'cyan'], textures: ['solid', 'striped'], motions: ['static'] },
+    4: { shapes: ['triangle', 'square', 'circle'], colors: ['orange', 'cyan', 'magenta'], textures: ['solid', 'striped'], motions: ['static', 'moving'] },
+    5: { shapes: ['triangle', 'square', 'circle', 'star'], colors: ['orange', 'cyan', 'magenta'], textures: ['solid', 'striped'], motions: ['static', 'moving'] }
+};
+
+// Shuffle valences for all 48 object types
+function shuffleValences() {
+    let valid = false;
+    while (!valid) {
+        GameState.valenceMap = {};
+        for (const shape of SHAPES) {
+            for (const color of COLORS) {
+                for (const texture of TEXTURES) {
+                    for (const motion of MOTIONS) {
+                        const key = `${shape}_${color}_${texture}_${motion}`;
+                        const r = Math.random();
+                        if (r < 0.4) GameState.valenceMap[key] = 'harmful';
+                        else if (r < 0.8) GameState.valenceMap[key] = 'beneficial';
+                        else GameState.valenceMap[key] = 'neutral';
+                    }
+                }
+            }
+        }
+        valid = checkValenceBalance();
+    }
+}
+
+function checkValenceBalance() {
+    for (let s = 1; s <= 5; s++) {
+        const pool = STAGE_POOLS[s];
+        let beneficialCount = 0;
+        for (const shape of pool.shapes) {
+            for (const color of pool.colors) {
+                for (const texture of pool.textures) {
+                    for (const motion of pool.motions) {
+                        const key = `${shape}_${color}_${texture}_${motion}`;
+                        if (GameState.valenceMap[key] === 'beneficial') {
+                            beneficialCount++;
+                        }
+                    }
+                }
+            }
+        }
+        const minBeneficial = (s === 1) ? 1 : 2; // Stage 1 has a smaller pool
+        if (beneficialCount < minBeneficial) return false;
+    }
+    return true;
+}
+
+
+// ========== 3.5 GAME MECHANICS ==========
+
+function updateGame(dt) {
+    if (GameState.isInvincible) {
+        GameState.invincibleTimer -= dt;
+        if (GameState.invincibleTimer <= 0) {
+            GameState.isInvincible = false;
+        }
+    }
+    
+    updateAIMovement(dt);
+    
+    if (GameState.flash && GameState.flash.alpha > 0) {
+        GameState.flash.alpha -= dt * 0.003;
+        if (GameState.flash.alpha < 0) GameState.flash.alpha = 0;
+    }
+    
+    if (GameState.phase === 'playing') {
+        GameState.objectSpawnTimer -= dt;
+        if (GameState.objectSpawnTimer <= 0 && GameState.objects.length < 6) {
+            spawnObject();
+            GameState.objectSpawnTimer = CONFIG.OBJECT_SPAWN_INTERVAL || 4000;
+        }
+        
+        updateObjects(dt);
+    }
+}
+
+// ========== 3.6 PLAYER & OBJECT LOGIC ==========
+
+function getResolvedChips() {
+    const resolved = [];
+    const resolve = (chip, visited) => {
+        if (visited.has(chip.id)) return null;
+        visited.add(chip.id);
+        
+        let depth = 0;
+        let attr = { ...chip.attributes };
+        
+        if (chip.parents.length > 0) {
+            const parent = GameState.chips.find(c => c.id === chip.parents[0]);
+            if (parent) {
+                const pRes = resolve(parent, new Set(visited));
+                if (pRes) {
+                    depth = pRes.depth + 1;
+                    for (const k in pRes.attr) {
+                        if (attr[k] === null || attr[k] === undefined) {
+                            attr[k] = pRes.attr[k];
+                        }
+                    }
+                }
+            }
+        }
+        return { id: chip.id, attr, depth };
+    };
+    
+    for (const chip of GameState.chips) {
+        const res = resolve(chip, new Set());
+        if (res) resolved.push(res);
+    }
+    return resolved;
+}
+
+function evaluateObjectValence(obj, resolvedChips) {
+    let bestRes = null;
+    let bestScore = -1;
+    
+    for (const res of resolvedChips) {
+        if (!res.attr.valence) continue;
+        
+        let definedCount = 0;
+        let match = true;
+        for (const k of ['shape', 'color', 'texture', 'motion']) {
+            if (res.attr[k]) {
+                definedCount++;
+                if (res.attr[k] !== obj[k]) {
+                    match = false;
+                    break;
+                }
+            }
+        }
+        
+        if (definedCount === 0 || !match) continue;
+        
+        if (definedCount > bestScore || (definedCount === bestScore && res.depth > (bestRes ? bestRes.depth : -1))) {
+            bestScore = definedCount;
+            bestRes = res;
+        }
+    }
+    
+    return bestRes ? bestRes.attr.valence : 'neutral';
+}
+
+function updateAIMovement(dt) {
+    const p = GameState.player;
+    if (GameState.phase !== 'playing') return;
+    
+    if (p.targetX === undefined) {
+        p.targetX = Math.floor(p.x);
+        p.targetY = Math.floor(p.y);
+        p.lastDx = 0;
+        p.lastDy = 0;
+    }
+    
+    const dx = p.targetX + 0.5 - p.x;
+    const dy = p.targetY + 0.5 - p.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const speed = p.speed * (dt / 1000) * 1.5; // Base AI speed
+    
+    if (dist <= Math.max(speed, 0.05)) { // Arrived
+        p.x = p.targetX + 0.5;
+        p.y = p.targetY + 0.5;
+        decideNextAIAction();
+    } else {
+        p.x += (dx / dist) * speed;
+        p.y += (dy / dist) * speed;
+    }
+}
+
+function decideNextAIAction() {
+    const p = GameState.player;
+    const gridX = Math.floor(p.x);
+    const gridY = Math.floor(p.y);
+    
+    const detectionRadius = (GameState.playerShape === 'triangle') ? 3 : (GameState.playerShape === 'square' ? 5 : 7);
+    
+    let closestHarmful = null;
+    let closestHarmfulDist = Infinity;
+    
+    let closestBeneficial = null;
+    let closestBeneficialDist = Infinity;
+    
+    const resolvedChips = getResolvedChips();
+    
+    for (const obj of GameState.objects) {
+        const dx = obj.x - p.x;
+        const dy = obj.y - p.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist <= detectionRadius) {
+            const pred = evaluateObjectValence(obj, resolvedChips);
+            if (pred === 'harmful' && dist < closestHarmfulDist) {
+                closestHarmful = obj;
+                closestHarmfulDist = dist;
+            } else if (pred === 'beneficial' && dist < closestBeneficialDist) {
+                closestBeneficial = obj;
+                closestBeneficialDist = dist;
+            }
+        }
+    }
+    
+    let nextDirs = [];
+    const possibleDirs = [ {dx:1,dy:0}, {dx:-1,dy:0}, {dx:0,dy:1}, {dx:0,dy:-1} ];
+    const validDirs = possibleDirs.filter(d => {
+        const nx = gridX + d.dx;
+        const ny = gridY + d.dy;
+        return GameState.maze[ny] && GameState.maze[ny][nx] === 0;
+    });
+    
+    if (validDirs.length === 0) return; // Trapped
+    
+    if (closestHarmful) {
+        p.state = 'AVOID';
+        let maxDist = -1;
+        for (const d of validDirs) {
+            const hx = closestHarmful.x;
+            const hy = closestHarmful.y;
+            const ndist = Math.sqrt(Math.pow(gridX + d.dx + 0.5 - hx, 2) + Math.pow(gridY + d.dy + 0.5 - hy, 2));
+            if (ndist > maxDist) {
+                maxDist = ndist;
+                nextDirs = [d];
+            } else if (ndist === maxDist) {
+                nextDirs.push(d);
+            }
+        }
+    } else if (closestBeneficial) {
+        p.state = 'HUNT';
+        const path = bfs(gridX, gridY, Math.floor(closestBeneficial.x), Math.floor(closestBeneficial.y));
+        if (path && path.length > 0) {
+            nextDirs = [ {dx: path[0].x - gridX, dy: path[0].y - gridY} ];
+        } else {
+            p.state = 'WANDER';
+        }
+    } else {
+        p.state = 'WANDER';
+    }
+    
+    if (p.state === 'WANDER') {
+        const nonReverse = validDirs.filter(d => !(d.dx === -p.lastDx && d.dy === -p.lastDy));
+        if (nonReverse.length > 0) {
+            nextDirs = nonReverse;
+        } else {
+            nextDirs = validDirs;
+        }
+    }
+    
+    const chosenDir = nextDirs[Math.floor(Math.random() * nextDirs.length)] || validDirs[0];
+    p.targetX = gridX + chosenDir.dx;
+    p.targetY = gridY + chosenDir.dy;
+    p.lastDx = chosenDir.dx;
+    p.lastDy = chosenDir.dy;
+    
+    if (chosenDir.dx > 0) p.dir = 'right';
+    if (chosenDir.dx < 0) p.dir = 'left';
+    if (chosenDir.dy > 0) p.dir = 'down';
+    if (chosenDir.dy < 0) p.dir = 'up';
+}
+
+function bfs(sx, sy, tx, ty) {
+    if (sx === tx && sy === ty) return [];
+    
+    const queue = [{x: sx, y: sy, path: []}];
+    const visited = new Set();
+    visited.add(`${sx},${sy}`);
+    
+    while (queue.length > 0) {
+        const curr = queue.shift();
+        
+        for (const d of [ {dx:1,dy:0}, {dx:-1,dy:0}, {dx:0,dy:1}, {dx:0,dy:-1} ]) {
+            const nx = curr.x + d.dx;
+            const ny = curr.y + d.dy;
+            
+            if (nx === tx && ny === ty) {
+                return curr.path.concat({x: nx, y: ny});
+            }
+            
+            if (GameState.maze[ny] && GameState.maze[ny][nx] === 0 && !visited.has(`${nx},${ny}`)) {
+                visited.add(`${nx},${ny}`);
+                queue.push({x: nx, y: ny, path: curr.path.concat({x: nx, y: ny})});
+            }
+        }
+    }
+    return null;
+}
+
+function spawnObject() {
+    const pool = STAGE_POOLS[GameState.stage];
+    const shape = pool.shapes[Math.floor(Math.random() * pool.shapes.length)];
+    const color = pool.colors[Math.floor(Math.random() * pool.colors.length)];
+    const texture = pool.textures[Math.floor(Math.random() * pool.textures.length)];
+    const motion = pool.motions[Math.floor(Math.random() * pool.motions.length)];
+    
+    const entry = GameState.entryPoints[Math.floor(Math.random() * GameState.entryPoints.length)];
+    
+    const obj = {
+        id: Math.random().toString(36).substr(2, 9),
+        shape, color, texture, motion,
+        x: entry.col + 0.5,
+        y: entry.row + 0.5,
+        lifetime: CONFIG.OBJECT_LIFETIME,
+        vx: 0, vy: 0
+    };
+    
+    if (motion === 'moving') {
+        const dirs = [ {dx: 1, dy: 0}, {dx: -1, dy: 0}, {dx: 0, dy: 1}, {dx: 0, dy: -1} ];
+        const validDirs = dirs.filter(d => {
+            const nr = entry.row + d.dy;
+            const nc = entry.col + d.dx;
+            return GameState.maze[nr] && GameState.maze[nr][nc] === 0;
+        });
+        const d = validDirs[Math.floor(Math.random() * validDirs.length)] || dirs[0];
+        const speed = 2.0;
+        obj.vx = d.dx * speed;
+        obj.vy = d.dy * speed;
+    }
+    
+    GameState.objects.push(obj);
+}
+
+function updateObjects(dt) {
+    const radius = 0.35;
+    const speedScale = dt / 1000;
+    
+    for (let i = GameState.objects.length - 1; i >= 0; i--) {
+        const obj = GameState.objects[i];
+        obj.lifetime -= dt;
+        if (obj.lifetime <= 0) {
+            GameState.objects.splice(i, 1);
+            continue;
+        }
+        
+        if (obj.motion === 'moving') {
+            const nx = obj.x + obj.vx * speedScale;
+            const ny = obj.y + obj.vy * speedScale;
+            
+            const checkCollision = (px, py) => {
+                const minC = Math.floor(px - radius), maxC = Math.floor(px + radius);
+                const minR = Math.floor(py - radius), maxR = Math.floor(py + radius);
+                for (let r = minR; r <= maxR; r++) {
+                    for (let c = minC; c <= maxC; c++) {
+                        if (GameState.maze[r] && GameState.maze[r][c] === 1) return true;
+                    }
+                }
+                return false;
+            };
+            
+            let hitX = checkCollision(nx, obj.y);
+            let hitY = checkCollision(obj.x, ny);
+            
+            if (hitX) obj.vx *= -1;
+            else obj.x = nx;
+            
+            if (hitY) obj.vy *= -1;
+            else obj.y = ny;
+        }
+        
+        const dx = GameState.player.x - obj.x;
+        const dy = GameState.player.y - obj.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        
+        if (dist < radius * 2) {
+            handleCollision(obj);
+            GameState.objects.splice(i, 1);
+        }
+    }
+}
+
+function handleCollision(obj) {
+    const key = `${obj.shape}_${obj.color}_${obj.texture}_${obj.motion}`;
+    const valence = GameState.valenceMap[key] || 'neutral';
+    
+    if (valence === 'harmful') {
+        applyDamage();
+    } else if (valence === 'beneficial') {
+        applyHeal(calculateExp(obj.shape, obj.motion));
+    }
+}
+
+function applyDamage() {
+    if (GameState.isInvincible || GameState.phase !== 'playing') return;
+    
+    GameState.hp -= 1;
+    GameState.flash = { r: 255, g: 0, b: 0, alpha: 0.6 };
+    AudioSys.play('damage');
+    
+    if (GameState.hp <= 0) {
+        GameState.hp = 0;
+        GameState.phase = 'gameover';
+        showGameOverScreen();
+    }
+}
+
+function applyHeal(expAmount) {
+    if (GameState.phase !== 'playing') return;
+    
+    GameState.hp = Math.min(CONFIG.MAX_HP, GameState.hp + 0.5);
+    GameState.exp += expAmount;
+    GameState.flash = { r: 0, g: 255, b: 65, alpha: 0.4 };
+    AudioSys.play('heal');
+    
+    const requiredExp = STAGE_EXP[GameState.stage];
+    if (GameState.exp >= requiredExp) {
+        GameState.phase = 'stageclear';
+        showStageClearScreen();
+    }
+}
+
+function calculateExp(shape, motion) {
+    const sides = SHAPE_SIDES[shape] || 3;
+    const mult = (motion === 'moving') ? 2 : 1;
+    return sides * 5 * mult;
+}
+
+function continueGame() {
+    GameState.hp = 3;
+    GameState.continues++;
+    GameState.isInvincible = true;
+    GameState.invincibleTimer = CONFIG.INVINCIBLE_DURATION;
+    GameState.phase = 'playing';
+    hideScreens();
+}
+
+function calculateGrade() {
+    const continues = GameState.continues;
+    const hp = GameState.hp;
+    
+    for (const g of CLEAR_GRADES) {
+        if (continues <= g.maxContinues && hp >= g.minHP) {
+            return g;
+        }
+    }
+    return CLEAR_GRADES[CLEAR_GRADES.length - 1]; // Fallback to C
+}
+
+function showGameOverScreen() {
+    let screen = document.getElementById('game-over-screen');
+    if (!screen) {
+        screen = document.createElement('div');
+        screen.id = 'game-over-screen';
+        screen.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;';
+        screen.innerHTML = `
+            <div style="font-size:32px;color:red;margin-bottom:20px;text-shadow:0 0 10px red;font-family:'Press Start 2P', monospace;">GAME OVER</div>
+            <button id="btn-continue" style="font-family:'Press Start 2P', monospace;font-size:12px;background:#220000;color:red;border:1px solid red;padding:10px 20px;cursor:pointer;transition:all 0.2s;">CONTINUE</button>
+        `;
+        document.body.appendChild(screen);
+        const btn = document.getElementById('btn-continue');
+        btn.addEventListener('mouseover', () => btn.style.background = '#440000');
+        btn.addEventListener('mouseout', () => btn.style.background = '#220000');
+        btn.addEventListener('click', continueGame);
+    }
+    screen.style.display = 'flex';
+}
+
+function showStageClearScreen() {
+    const grade = calculateGrade();
+    let screen = document.getElementById('stage-clear-screen');
+    if (!screen) {
+        screen = document.createElement('div');
+        screen.id = 'stage-clear-screen';
+        screen.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;font-family:"Press Start 2P", monospace;';
+        document.body.appendChild(screen);
+        screen.innerHTML = `
+            <div style="font-size:32px;color:#00ff41;margin-bottom:20px;text-shadow:0 0 10px #00ff41;">STAGE CLEAR</div>
+            <div style="color:white;margin-bottom:10px;font-size:12px;">GRADE: <span id="clear-grade" style="color:#00ccff;font-size:24px;"></span></div>
+            <div id="clear-stats" style="color:#aaa;font-size:8px;margin-bottom:20px;"></div>
+            <button id="btn-next-stage" style="font-family:inherit;font-size:12px;background:#002200;color:#00ff41;border:1px solid #00ff41;padding:10px 20px;cursor:pointer;transition:all 0.2s;">NEXT STAGE</button>
+        `;
+        const btn = document.getElementById('btn-next-stage');
+        btn.addEventListener('mouseover', () => btn.style.background = '#004400');
+        btn.addEventListener('mouseout', () => btn.style.background = '#002200');
+        btn.addEventListener('click', () => {
+            screen.style.display = 'none';
+            if (GameState.stage >= 5) {
+                GameState.phase = 'gameclear';
+                showGameClearScreen();
+            } else {
+                loadStage(GameState.stage + 1);
+                GameState.phase = 'playing';
+            }
+        });
+    }
+    
+    document.getElementById('clear-grade').textContent = grade.grade;
+    document.getElementById('clear-stats').textContent = `Continues: ${GameState.continues} / HP: ${Math.floor(GameState.hp)}`;
+    screen.style.display = 'flex';
+}
+
+function showGameClearScreen() {
+    let screen = document.getElementById('game-clear-screen');
+    if (!screen) {
+        screen = document.createElement('div');
+        screen.id = 'game-clear-screen';
+        screen.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;font-family:"Press Start 2P", monospace;';
+        document.body.appendChild(screen);
+        screen.innerHTML = `
+            <div style="font-size:32px;color:#00ccff;margin-bottom:20px;text-shadow:0 0 20px #00ccff;">GAME CLEAR!</div>
+            <div style="color:white;font-size:12px;margin-bottom:30px;line-height:1.5;text-align:center;">ALL 1000 BRAINS COMPILED<br><span style="font-size:8px;color:#888;">Thank you for playing</span></div>
+            <button id="btn-restart" style="font-family:inherit;font-size:12px;background:#002233;color:#00ccff;border:1px solid #00ccff;padding:10px 20px;cursor:pointer;transition:all 0.2s;">RETURN TO TITLE</button>
+        `;
+        const btn = document.getElementById('btn-restart');
+        btn.addEventListener('mouseover', () => btn.style.background = '#004466');
+        btn.addEventListener('mouseout', () => btn.style.background = '#002233');
+        btn.addEventListener('click', () => {
+            screen.style.display = 'none';
+            document.getElementById('game-container').style.display = 'none';
+            document.getElementById('title-screen').style.display = 'flex';
+            GameState.phase = 'title';
+        });
+    }
+    screen.style.display = 'flex';
+}
+
+function hideScreens() {
+    const go = document.getElementById('game-over-screen');
+    const sc = document.getElementById('stage-clear-screen');
+    const gc = document.getElementById('game-clear-screen');
+    if (go) go.style.display = 'none';
+    if (sc) sc.style.display = 'none';
+    if (gc) gc.style.display = 'none';
+}
+
+
+// ========== 4. RENDERING UTILITIES ==========
+
+// Draw a pixel-art shape on a canvas context
+function drawShape(ctx, x, y, size, shape, fillColor, texture, borderPattern) {
+    ctx.save();
+    const hs = size / 2;
+
+    // Build path based on shape
+    ctx.beginPath();
+    switch (shape) {
+        case 'triangle':
+            ctx.moveTo(x, y - hs);
+            ctx.lineTo(x - hs, y + hs);
+            ctx.lineTo(x + hs, y + hs);
+            ctx.closePath();
+            break;
+        case 'square':
+            ctx.rect(x - hs, y - hs, size, size);
+            break;
+        case 'circle':
+            ctx.arc(x, y, hs, 0, Math.PI * 2);
+            break;
+        case 'star': {
+            const spikes = 5;
+            const outerR = hs, innerR = hs * 0.45;
+            for (let i = 0; i < spikes * 2; i++) {
+                const r = i % 2 === 0 ? outerR : innerR;
+                const angle = (Math.PI / 2 * 3) + (i * Math.PI / spikes);
+                const px = x + Math.cos(angle) * r;
+                const py = y + Math.sin(angle) * r;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            break;
+        }
+        case 'pentagon': {
+            for (let i = 0; i < 5; i++) {
+                const angle = (Math.PI / 2 * 3) + (i * 2 * Math.PI / 5);
+                const px = x + Math.cos(angle) * hs;
+                const py = y + Math.sin(angle) * hs;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            break;
+        }
+        case 'hexagon': {
+            for (let i = 0; i < 6; i++) {
+                const angle = (i * Math.PI / 3) - Math.PI / 6;
+                const px = x + Math.cos(angle) * hs;
+                const py = y + Math.sin(angle) * hs;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            break;
+        }
+    }
+
+    // Fill
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+
+    // Texture: striped pattern
+    if (texture === 'striped') {
+        ctx.save();
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 1;
+        for (let ly = y - hs; ly <= y + hs; ly += 3) {
+            ctx.beginPath();
+            ctx.moveTo(x - hs, ly);
+            ctx.lineTo(x + hs, ly);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+
+    // Border
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    // Rebuild path for stroke
+    ctx.beginPath();
+    switch (shape) {
+        case 'triangle':
+            ctx.moveTo(x, y - hs); ctx.lineTo(x - hs, y + hs); ctx.lineTo(x + hs, y + hs); ctx.closePath(); break;
+        case 'square':
+            ctx.rect(x - hs, y - hs, size, size); break;
+        case 'circle':
+            ctx.arc(x, y, hs, 0, Math.PI * 2); break;
+        case 'star': {
+            const spikes = 5, outerR = hs, innerR = hs * 0.45;
+            for (let i = 0; i < spikes * 2; i++) {
+                const r = i % 2 === 0 ? outerR : innerR;
+                const angle = (Math.PI / 2 * 3) + (i * Math.PI / spikes);
+                if (i === 0) ctx.moveTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r);
+                else ctx.lineTo(x + Math.cos(angle) * r, y + Math.sin(angle) * r);
+            }
+            ctx.closePath(); break;
+        }
+        case 'pentagon': {
+            for (let i = 0; i < 5; i++) {
+                const angle = (Math.PI / 2 * 3) + (i * 2 * Math.PI / 5);
+                if (i === 0) ctx.moveTo(x + Math.cos(angle) * hs, y + Math.sin(angle) * hs);
+                else ctx.lineTo(x + Math.cos(angle) * hs, y + Math.sin(angle) * hs);
+            }
+            ctx.closePath(); break;
+        }
+        case 'hexagon': {
+            for (let i = 0; i < 6; i++) {
+                const angle = (i * Math.PI / 3) - Math.PI / 6;
+                if (i === 0) ctx.moveTo(x + Math.cos(angle) * hs, y + Math.sin(angle) * hs);
+                else ctx.lineTo(x + Math.cos(angle) * hs, y + Math.sin(angle) * hs);
+            }
+            ctx.closePath(); break;
+        }
+    }
+    ctx.stroke();
+
+    ctx.restore();
+}
+
+// Draw player character (white + directional eye dot)
+function drawPlayer(ctx, x, y, size, shape, direction) {
+    drawShape(ctx, x, y, size, shape, '#ffffff', 'solid', null);
+
+    // Eye dot (black)
+    const eyeOffset = size * 0.2;
+    let ex = x, ey = y;
+    switch (direction) {
+        case 'right': ex += eyeOffset; break;
+        case 'left':  ex -= eyeOffset; break;
+        case 'up':    ey -= eyeOffset; break;
+        case 'down':  ey += eyeOffset; break;
+    }
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(Math.round(ex) - 1, Math.round(ey) - 1, 3, 3);
+}
+
+
+// ========== 5. MAZE RENDERER ==========
+
+function renderMaze(ctx, maze, tileSize) {
+    const rows = maze.length, cols = maze[0].length;
+
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const x = c * tileSize, y = r * tileSize;
+            if (maze[r][c] === 1) {
+                // Wall
+                ctx.fillStyle = '#1a1a3e';
+                ctx.fillRect(x, y, tileSize, tileSize);
+
+                // Wall border highlights
+                ctx.strokeStyle = '#2a2a6e';
+                ctx.lineWidth = 1;
+                // Top edge
+                if (r === 0 || maze[r-1][c] === 0) {
+                    ctx.beginPath(); ctx.moveTo(x, y + 0.5); ctx.lineTo(x + tileSize, y + 0.5); ctx.stroke();
+                }
+                // Left edge
+                if (c === 0 || maze[r][c-1] === 0) {
+                    ctx.beginPath(); ctx.moveTo(x + 0.5, y); ctx.lineTo(x + 0.5, y + tileSize); ctx.stroke();
+                }
+                // Bottom edge (darker)
+                if (r === rows - 1 || maze[r+1]?.[c] === 0) {
+                    ctx.strokeStyle = '#10102e';
+                    ctx.beginPath(); ctx.moveTo(x, y + tileSize - 0.5); ctx.lineTo(x + tileSize, y + tileSize - 0.5); ctx.stroke();
+                }
+                // Right edge (darker)
+                if (c === cols - 1 || maze[r][c+1] === 0) {
+                    ctx.strokeStyle = '#10102e';
+                    ctx.beginPath(); ctx.moveTo(x + tileSize - 0.5, y); ctx.lineTo(x + tileSize - 0.5, y + tileSize); ctx.stroke();
+                }
+            } else {
+                // Path
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(x, y, tileSize, tileSize);
+
+                // Subtle path dots (pac-man style aesthetic)
+                // Only internal paths get dots, not border entries
+                if (r > 0 && r < rows - 1 && c > 0 && c < cols - 1) {
+                    ctx.fillStyle = '#0a0a0a';
+                    ctx.fillRect(x + tileSize/2 - 0.5, y + tileSize/2 - 0.5, 1, 1);
+                }
+            }
+        }
+    }
+}
+
+
+// ========== 6. CIRCUIT BOARD RENDERER ==========
+
+function renderCircuitBoard(ctx, cols, rows, cellSize) {
+    const w = cols * cellSize, h = rows * cellSize;
+
+    // Background
+    ctx.fillStyle = '#0a1a0a';
+    ctx.fillRect(0, 0, w, h);
+
+    // Dot grid
+    ctx.fillStyle = '#0f2f0f';
+    for (let r = 0; r <= rows; r++) {
+        for (let c = 0; c <= cols; c++) {
+            ctx.fillRect(c * cellSize - 1, r * cellSize - 1, 2, 2);
+        }
+    }
+
+    // Grid lines (very subtle)
+    ctx.strokeStyle = 'rgba(15, 47, 15, 0.3)';
+    ctx.lineWidth = 0.5;
+    for (let r = 0; r <= rows; r++) {
+        ctx.beginPath();
+        ctx.moveTo(0, r * cellSize);
+        ctx.lineTo(w, r * cellSize);
+        ctx.stroke();
+    }
+    for (let c = 0; c <= cols; c++) {
+        ctx.beginPath();
+        ctx.moveTo(c * cellSize, 0);
+        ctx.lineTo(c * cellSize, h);
+        ctx.stroke();
+    }
+}
+
+
+// ========== 7. HUD RENDERER ==========
+
+function renderHUD() {
+    // HP Hearts
+    const hpDisplay = document.getElementById('hp-display');
+    hpDisplay.innerHTML = '';
+    for (let i = 0; i < CONFIG.MAX_HP; i++) {
+        const heart = document.createElement('div');
+        heart.className = 'heart';
+        if (i < Math.floor(GameState.hp)) {
+            heart.className += ''; // full
+        } else if (i < GameState.hp) {
+            heart.className += ' half';
+        } else {
+            heart.className += ' empty';
+        }
+        hpDisplay.appendChild(heart);
+    }
+
+    // Stage number
+    document.getElementById('stage-number').textContent = GameState.stage;
+
+    // EXP bar
+    const expReq = STAGE_EXP[GameState.stage] || 100;
+    const expPct = Math.min(100, (GameState.exp / expReq) * 100);
+    document.getElementById('exp-bar-inner').style.width = expPct + '%';
+
+    // Player shape display
+    const shapeCanvas = document.getElementById('player-shape-display');
+    const sctx = shapeCanvas.getContext('2d');
+    sctx.clearRect(0, 0, 20, 20);
+    drawPlayer(sctx, 10, 10, 14, GameState.playerShape, 'right');
+}
+
+
+// ========== 8. PARTS TRAY SETUP ==========
+
+function setupPartsTray() {
+    const container = document.getElementById('tray-blocks');
+    container.innerHTML = '';
+
+    // Shape blocks (gray silhouettes)
+    const shapeSection = createTraySection();
+    for (const shape of SHAPES) {
+        const block = createTrayBlock(16, (ctx, s) => {
+            drawShape(ctx, s/2, s/2, s * 0.7, shape, '#888888', 'solid', null);
+        });
+        block.dataset.category = 'shape';
+        block.dataset.value = shape;
+        block.title = shape;
+        shapeSection.appendChild(block);
+    }
+    container.appendChild(shapeSection);
+
+    // Color blocks (swatches)
+    const colorSection = createTraySection();
+    for (const color of COLORS) {
+        const block = createTrayBlock(16, (ctx, s) => {
+            ctx.fillStyle = CUD_COLORS[color];
+            ctx.fillRect(2, 2, s - 4, s - 4);
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(2, 2, s - 4, s - 4);
+        });
+        block.dataset.category = 'color';
+        block.dataset.value = color;
+        block.title = color;
+        colorSection.appendChild(block);
+    }
+    container.appendChild(colorSection);
+
+    // Texture blocks
+    const texSection = createTraySection();
+    for (const tex of TEXTURES) {
+        const block = createTrayBlock(16, (ctx, s) => {
+            ctx.fillStyle = '#cccccc';
+            ctx.fillRect(3, 3, s - 6, s - 6);
+            if (tex === 'striped') {
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 1;
+                for (let y = 3; y < s - 3; y += 3) {
+                    ctx.beginPath();
+                    ctx.moveTo(3, y);
+                    ctx.lineTo(s - 3, y);
+                    ctx.stroke();
+                }
+            }
+        });
+        block.dataset.category = 'texture';
+        block.dataset.value = tex;
+        block.title = tex;
+        texSection.appendChild(block);
+    }
+    container.appendChild(texSection);
+
+    // Motion blocks
+    const motionSection = createTraySection();
+    for (const motion of MOTIONS) {
+        const block = createTrayBlock(16, (ctx, s) => {
+            ctx.fillStyle = '#cccccc';
+            if (motion === 'static') {
+                ctx.fillRect(s/2 - 3, s/2 - 3, 6, 6);
+            } else {
+                // Arrow
+                ctx.beginPath();
+                ctx.moveTo(3, s/2);
+                ctx.lineTo(s - 5, s/2);
+                ctx.lineTo(s - 7, s/2 - 3);
+                ctx.moveTo(s - 5, s/2);
+                ctx.lineTo(s - 7, s/2 + 3);
+                ctx.strokeStyle = '#cccccc';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+        });
+        block.dataset.category = 'motion';
+        block.dataset.value = motion;
+        block.title = motion;
+        motionSection.appendChild(block);
+    }
+    container.appendChild(motionSection);
+
+    // Valence blocks
+    const valSection = createTraySection();
+    const valIcons = [
+        { v: 'harmful', draw: (ctx, s) => {
+            // Skull
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(s/2-3, s/2-4, 6, 5);
+            ctx.fillRect(s/2-2, s/2+1, 4, 2);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(s/2-2, s/2-2, 2, 2);
+            ctx.fillRect(s/2+1, s/2-2, 2, 2);
+        }},
+        { v: 'beneficial', draw: (ctx, s) => {
+            // Clover/sprout
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(s/2, s/2, 1, 4);
+            ctx.fillRect(s/2-2, s/2-2, 2, 3);
+            ctx.fillRect(s/2+1, s/2-2, 2, 3);
+            ctx.fillRect(s/2-1, s/2-3, 3, 2);
+        }},
+        { v: 'neutral', draw: (ctx, s) => {
+            // Small dot
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(s/2-1, s/2-1, 2, 2);
+        }},
+    ];
+    for (const { v, draw } of valIcons) {
+        const block = createTrayBlock(16, draw);
+        block.dataset.category = 'valence';
+        block.dataset.value = v;
+        block.title = v;
+        valSection.appendChild(block);
+    }
+    container.appendChild(valSection);
+
+    // NEW CHIP button
+    const btn = document.getElementById('new-chip-btn');
+    if (!btn) {
+        const newBtn = document.createElement('button');
+        newBtn.id = 'new-chip-btn';
+        newBtn.textContent = 'NEW CHIP';
+        newBtn.addEventListener('click', createNewChip);
+        container.appendChild(newBtn);
+    } else {
+        btn.addEventListener('click', createNewChip);
+    }
+    
+    // Setup tray drag events
+    const blocks = document.querySelectorAll('.tray-block');
+    blocks.forEach(block => {
+        block.addEventListener('mousedown', (e) => {
+            if (GameState.phase !== 'playing') return;
+            GameState.dragState = {
+                type: 'tray_part',
+                category: block.dataset.category,
+                value: block.dataset.value,
+                element: block
+            };
+            document.body.style.cursor = 'grabbing';
+        });
+    });
+}
+
+function createNewChip() {
+    if (GameState.phase !== 'playing') return;
+    
+    const chip = {
+        id: GameState.nextChipId++,
+        x: CONFIG.BOARD_COLS / 2, // Grid coordinates
+        y: CONFIG.BOARD_ROWS / 2,
+        attributes: {
+            shape: null,
+            color: null,
+            texture: null,
+            motion: null,
+            valence: null
+        },
+        maxPins: GameState.maxPins,
+        parents: [], // IDs of chips feeding into this one
+        children: [] // IDs of chips this feeds into
+    };
+    
+    // Find empty spot slightly offset if center is taken
+    while (GameState.chips.some(c => c.x === chip.x && c.y === chip.y)) {
+        chip.x = (chip.x + 1) % CONFIG.BOARD_COLS;
+        if (chip.x === 0) chip.y = (chip.y + 1) % CONFIG.BOARD_ROWS;
+    }
+    
+    GameState.chips.push(chip);
+}
+
+// ========== 8.5 CIRCUIT BOARD INTERACTION ==========
+
+let boardMouse = { x: 0, y: 0 };
+
+function setupBoardInteraction() {
+    const canvas = document.getElementById('board-canvas');
+    
+    const updateMouse = (e) => {
+        if (GameState.phase !== 'playing') return;
+        const rect = canvas.getBoundingClientRect();
+        // Support touch and mouse
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        boardMouse.x = clientX - rect.left;
+        boardMouse.y = clientY - rect.top;
+        
+        if (GameState.dragState) {
+            if (GameState.dragState.type === 'chip') {
+                const gridX = Math.floor(boardMouse.x / CONFIG.CELL_SIZE);
+                const gridY = Math.floor(boardMouse.y / CONFIG.CELL_SIZE);
+                const clampX = Math.max(0, Math.min(CONFIG.BOARD_COLS - 1, gridX));
+                const clampY = Math.max(0, Math.min(CONFIG.BOARD_ROWS - 1, gridY));
+                
+                const isOccupied = GameState.chips.some(c => c.id !== GameState.dragState.chip.id && c.x === clampX && c.y === clampY);
+                if (!isOccupied) {
+                    GameState.dragState.chip.x = clampX;
+                    GameState.dragState.chip.y = clampY;
+                }
+            }
+        }
+    };
+    
+    window.addEventListener('mousemove', updateMouse);
+    window.addEventListener('touchmove', updateMouse, {passive: false});
+    
+    const handleDown = (e) => {
+        if (GameState.phase !== 'playing') return;
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        boardMouse.x = clientX - rect.left;
+        boardMouse.y = clientY - rect.top;
+        
+        const gridX = Math.floor(boardMouse.x / CONFIG.CELL_SIZE);
+        const gridY = Math.floor(boardMouse.y / CONFIG.CELL_SIZE);
+        const clickedChip = GameState.chips.find(c => c.x === gridX && c.y === gridY);
+        
+        if (clickedChip) {
+            if (e.shiftKey) {
+                GameState.dragState = { type: 'wire', fromChip: clickedChip };
+            } else {
+                GameState.dragState = { type: 'chip', chip: clickedChip };
+                document.body.style.cursor = 'grabbing';
+            }
+            if (e.touches) e.preventDefault();
+        }
+    };
+    
+    canvas.addEventListener('mousedown', handleDown);
+    canvas.addEventListener('touchstart', handleDown, {passive: false});
+    
+    const handleUp = (e) => {
+        if (GameState.phase !== 'playing' || !GameState.dragState) return;
+        
+        if (GameState.dragState.type === 'tray_part') {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+            const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+            const bx = clientX - rect.left;
+            const by = clientY - rect.top;
+            
+            if (bx >= 0 && bx <= canvas.width && by >= 0 && by <= canvas.height) {
+                const gridX = Math.floor(bx / CONFIG.CELL_SIZE);
+                const gridY = Math.floor(by / CONFIG.CELL_SIZE);
+                const targetChip = GameState.chips.find(c => c.x === gridX && c.y === gridY);
+                
+                if (targetChip) {
+                    // Apply attribute
+                    targetChip.attributes[GameState.dragState.category] = GameState.dragState.value;
+                }
+            }
+        } else if (GameState.dragState.type === 'wire') {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+            const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+            const bx = clientX - rect.left;
+            const by = clientY - rect.top;
+            
+            if (bx >= 0 && bx <= canvas.width && by >= 0 && by <= canvas.height) {
+                const gridX = Math.floor(bx / CONFIG.CELL_SIZE);
+                const gridY = Math.floor(by / CONFIG.CELL_SIZE);
+                const targetChip = GameState.chips.find(c => c.x === gridX && c.y === gridY);
+                
+                if (targetChip && targetChip !== GameState.dragState.fromChip) {
+                    // Check for cycle (DFS)
+                    const hasCycle = (start, target) => {
+                        if (start.id === target.id) return true;
+                        for (const childId of target.children) {
+                            const child = GameState.chips.find(c => c.id === childId);
+                            if (child && hasCycle(start, child)) return true;
+                        }
+                        return false;
+                    };
+                    
+                    if (!hasCycle(GameState.dragState.fromChip, targetChip)) {
+                        // Prevent duplicate wires and multiple inheritance
+                        if (!GameState.dragState.fromChip.children.includes(targetChip.id) && targetChip.parents.length === 0) {
+                            GameState.dragState.fromChip.children.push(targetChip.id);
+                            targetChip.parents.push(GameState.dragState.fromChip.id);
+                            AudioSys.play('wire');
+                        } else {
+                            AudioSys.play('error');
+                        }
+                    } else {
+                        AudioSys.play('error');
+                    }
+                }
+            }
+        }
+        
+        GameState.dragState = null;
+        document.body.style.cursor = 'default';
+    };
+    
+    window.addEventListener('mouseup', handleUp);
+    window.addEventListener('touchend', handleUp);
+    
+    canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (GameState.phase !== 'playing') return;
+        
+        const gridX = Math.floor(boardMouse.x / CONFIG.CELL_SIZE);
+        const gridY = Math.floor(boardMouse.y / CONFIG.CELL_SIZE);
+        
+        const chipIndex = GameState.chips.findIndex(c => c.x === gridX && c.y === gridY);
+        if (chipIndex !== -1) {
+            const chip = GameState.chips[chipIndex];
+            // Remove connections
+            GameState.chips.forEach(c => {
+                c.parents = c.parents.filter(id => id !== chip.id);
+                c.children = c.children.filter(id => id !== chip.id);
+            });
+            GameState.chips.splice(chipIndex, 1);
+        }
+    });
+}
+
+function createTraySection() {
+    const div = document.createElement('div');
+    div.className = 'tray-section';
+    return div;
+}
+
+function createTrayBlock(canvasSize, drawFn) {
+    const block = document.createElement('div');
+    block.className = 'tray-block';
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    drawFn(ctx, canvasSize);
+    block.appendChild(canvas);
+    return block;
+}
+
+
+// ========== 9. CANVAS SIZING ==========
+
+function resizeCanvases() {
+    // Left: maze canvas
+    const mazeWrapper = document.getElementById('maze-wrapper');
+    const mw = mazeWrapper.clientWidth;
+    const mh = mazeWrapper.clientHeight;
+    const maze = GameState.maze || MAZES[0];
+    const cols = maze[0].length, rows = maze.length;
+
+    // Calculate tile size to fit
+    const tileSize = Math.floor(Math.min(mw / cols, mh / rows));
+    CONFIG.TILE_SIZE = Math.max(tileSize, 12); // minimum 12px
+
+    const mazeCanvas = document.getElementById('maze-canvas');
+    mazeCanvas.width = cols * CONFIG.TILE_SIZE;
+    mazeCanvas.height = rows * CONFIG.TILE_SIZE;
+    mazeCanvas.style.width = mazeCanvas.width + 'px';
+    mazeCanvas.style.height = mazeCanvas.height + 'px';
+
+    // Right: circuit board canvas
+    const boardWrapper = document.getElementById('board-wrapper');
+    const bw = boardWrapper.clientWidth - 16;
+    const bh = boardWrapper.clientHeight - 16;
+
+    const cellSize = Math.floor(Math.min(bw / CONFIG.BOARD_COLS, bh / CONFIG.BOARD_ROWS));
+    CONFIG.CELL_SIZE = Math.max(cellSize, 16);
+
+    const boardCanvas = document.getElementById('board-canvas');
+    boardCanvas.width = CONFIG.BOARD_COLS * CONFIG.CELL_SIZE;
+    boardCanvas.height = CONFIG.BOARD_ROWS * CONFIG.CELL_SIZE;
+    boardCanvas.style.width = boardCanvas.width + 'px';
+    boardCanvas.style.height = boardCanvas.height + 'px';
+}
+
+
+// ========== 10. GAME LOOP ==========
+
+function gameLoop(timestamp) {
+    if (GameState.phase !== 'playing') {
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
+    const dt = timestamp - (GameState.lastTimestamp || timestamp);
+    GameState.lastTimestamp = timestamp;
+
+    // --- UPDATE ---
+    updateGame(dt);
+
+    // --- RENDER ---
+    renderFrame();
+
+    requestAnimationFrame(gameLoop);
+}
+
+function renderFrame() {
+    // Render maze
+    const mazeCanvas = document.getElementById('maze-canvas');
+    const mctx = mazeCanvas.getContext('2d');
+    mctx.imageSmoothingEnabled = false;
+    mctx.clearRect(0, 0, mazeCanvas.width, mazeCanvas.height);
+
+    renderMaze(mctx, GameState.maze, CONFIG.TILE_SIZE);
+
+    // Render objects
+    for (const obj of GameState.objects) {
+        const ox = obj.x * CONFIG.TILE_SIZE;
+        const oy = obj.y * CONFIG.TILE_SIZE;
+        const objSize = CONFIG.TILE_SIZE * 0.7; // Uniform size
+        
+        if (obj.lifetime > 3000 || Math.floor(obj.lifetime / 150) % 2 === 0) {
+            drawShape(mctx, ox, oy, objSize, obj.shape, CUD_COLORS[obj.color], obj.texture, null);
+        }
+    }
+
+    // Render player
+    const px = GameState.player.x * CONFIG.TILE_SIZE;
+    const py = GameState.player.y * CONFIG.TILE_SIZE;
+    const playerSize = CONFIG.TILE_SIZE * 0.7;
+
+    // Invincibility blink
+    const showPlayer = !GameState.isInvincible || (Math.floor(Date.now() / 100) % 2 === 0);
+    if (showPlayer) {
+        drawPlayer(mctx, px, py, playerSize, GameState.playerShape, GameState.player.dir);
+    }
+
+    // Flash Effect
+    if (GameState.flash && GameState.flash.alpha > 0) {
+        mctx.fillStyle = `rgba(${GameState.flash.r}, ${GameState.flash.g}, ${GameState.flash.b}, ${GameState.flash.alpha})`;
+        mctx.fillRect(0, 0, mazeCanvas.width, mazeCanvas.height);
+    }
+
+    // Render circuit board
+    const boardCanvas = document.getElementById('board-canvas');
+    const bctx = boardCanvas.getContext('2d');
+    bctx.imageSmoothingEnabled = false;
+    bctx.clearRect(0, 0, boardCanvas.width, boardCanvas.height);
+
+    renderCircuitBoard(bctx, CONFIG.BOARD_COLS, CONFIG.BOARD_ROWS, CONFIG.CELL_SIZE);
+    
+    // Render Chips
+    for (const chip of GameState.chips) {
+        const cx = chip.x * CONFIG.CELL_SIZE;
+        const cy = chip.y * CONFIG.CELL_SIZE;
+        
+        // Chip background
+        bctx.fillStyle = '#0f1f0f';
+        bctx.fillRect(cx + 2, cy + 2, CONFIG.CELL_SIZE - 4, CONFIG.CELL_SIZE - 4);
+        bctx.strokeStyle = (GameState.dragState && GameState.dragState.chip === chip) ? '#00ff41' : '#2a3a2a';
+        bctx.lineWidth = 1;
+        bctx.strokeRect(cx + 2, cy + 2, CONFIG.CELL_SIZE - 4, CONFIG.CELL_SIZE - 4);
+        
+        // Render attributes on chip
+        const attrSize = CONFIG.CELL_SIZE * 0.6;
+        const centerX = cx + CONFIG.CELL_SIZE / 2;
+        const centerY = cy + CONFIG.CELL_SIZE / 2;
+        
+        if (chip.attributes.shape) {
+            const color = chip.attributes.color ? CUD_COLORS[chip.attributes.color] : '#888';
+            drawShape(bctx, centerX, centerY, attrSize, chip.attributes.shape, color, chip.attributes.texture || 'solid', null);
+        } else {
+            // Empty chip placeholder
+            bctx.fillStyle = '#112211';
+            bctx.fillRect(centerX - 4, centerY - 4, 8, 8);
+        }
+        
+        // Render valence icon (small in corner)
+        if (chip.attributes.valence) {
+            bctx.fillStyle = (chip.attributes.valence === 'harmful') ? '#ff3333' : (chip.attributes.valence === 'beneficial' ? '#00ff41' : '#ffffff');
+            bctx.fillRect(cx + 4, cy + 4, 4, 4);
+        }
+    }
+    
+    // Render Wires (Inheritance arrows)
+    bctx.strokeStyle = '#ffff00'; // Yellow dashed line
+    bctx.setLineDash([4, 4]);
+    bctx.lineWidth = 2;
+    for (const chip of GameState.chips) {
+        for (const childId of chip.children) {
+            const child = GameState.chips.find(c => c.id === childId);
+            if (child) {
+                const startX = chip.x * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
+                const startY = chip.y * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
+                const endX = child.x * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
+                const endY = child.y * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
+                
+                bctx.beginPath();
+                bctx.moveTo(startX, startY);
+                bctx.lineTo(endX, startY);
+                bctx.lineTo(endX, endY);
+                bctx.stroke();
+                
+                // Arrowhead
+                bctx.setLineDash([]);
+                bctx.fillStyle = '#ffff00';
+                bctx.fillRect(endX - 3, endY - 3, 6, 6);
+                bctx.setLineDash([4, 4]);
+            }
+        }
+    }
+    bctx.setLineDash([]);
+    
+    // Render current dragged wire
+    if (GameState.dragState && GameState.dragState.type === 'wire') {
+        const chip = GameState.dragState.fromChip;
+        const startX = chip.x * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
+        const startY = chip.y * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
+        
+        bctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+        bctx.setLineDash([4, 4]);
+        bctx.lineWidth = 2;
+        bctx.beginPath();
+        bctx.moveTo(startX, startY);
+        bctx.lineTo(boardMouse.x, startY);
+        bctx.lineTo(boardMouse.x, boardMouse.y);
+        bctx.stroke();
+        bctx.setLineDash([]);
+    }
+
+    // Render drag overlay
+    if (GameState.dragState && GameState.dragState.type === 'tray_part') {
+        const rect = boardCanvas.getBoundingClientRect();
+        if (boardMouse.x >= 0 && boardMouse.x <= rect.width && boardMouse.y >= 0 && boardMouse.y <= rect.height) {
+            bctx.globalAlpha = 0.5;
+            const gridX = Math.floor(boardMouse.x / CONFIG.CELL_SIZE);
+            const gridY = Math.floor(boardMouse.y / CONFIG.CELL_SIZE);
+            bctx.fillStyle = '#00ff41';
+            bctx.fillRect(gridX * CONFIG.CELL_SIZE, gridY * CONFIG.CELL_SIZE, CONFIG.CELL_SIZE, CONFIG.CELL_SIZE);
+            bctx.globalAlpha = 1.0;
+        }
+    }
+
+    // Render HUD
+    renderHUD();
+}
+
+
+// ========== 11. INITIALIZATION ==========
+
+function init() {
+    // Title screen handler
+    document.getElementById('press-start').addEventListener('click', startGame);
+    document.getElementById('title-screen').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') startGame();
+    });
+
+    // Setup parts tray
+    setupPartsTray();
+    
+    // Setup circuit board interactions
+    setupBoardInteraction();
+
+    // Handle resize
+    window.addEventListener('resize', () => {
+        if (GameState.phase === 'playing') {
+            resizeCanvases();
+            renderFrame();
+        }
+    });
+
+    // Start render loop
+    requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    AudioSys.init();
+    document.getElementById('title-screen').style.display = 'none';
+    document.getElementById('game-container').style.display = 'flex';
+
+    GameState.phase = 'playing';
+    resetGameState();
+
+    requestAnimationFrame(() => {
+        resizeCanvases();
+        renderFrame();
+    });
+}
+
+// Boot
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
