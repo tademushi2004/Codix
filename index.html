@@ -920,21 +920,6 @@ function updateGame(dt) {
     
     updateAIMovement(dt);
     
-    // Add player trail
-    const p = GameState.player;
-    if (Math.random() < 0.2 || p.x !== (p.lastX || p.x) || p.y !== (p.lastY || p.y)) {
-        GameState.playerTrails.push({ x: p.x, y: p.y, life: 1.0 });
-        p.lastX = p.x;
-        p.lastY = p.y;
-    }
-    // Update player trails
-    for (let i = GameState.playerTrails.length - 1; i >= 0; i--) {
-        GameState.playerTrails[i].life -= (dt / 500); // 0.5s fade
-        if (GameState.playerTrails[i].life <= 0) {
-            GameState.playerTrails.splice(i, 1);
-        }
-    }
-    
     if (GameState.flash && GameState.flash.alpha > 0) {
         GameState.flash.alpha -= dt * 0.003;
         if (GameState.flash.alpha < 0) GameState.flash.alpha = 0;
@@ -1056,28 +1041,50 @@ function decideNextAIAction() {
     
     const detectionRadius = (GameState.playerShape === 'triangle') ? 3 : (GameState.playerShape === 'square' ? 5 : 7);
     
-    let closestHarmful = null;
-    let closestHarmfulDist = Infinity;
-    
-    let closestBeneficial = null;
-    let closestBeneficialDist = Infinity;
-    
     const resolvedChips = getResolvedChips();
     
+    let targets = [];
+    let dangers = [];
+    
     for (const obj of GameState.objects) {
-        const dx = obj.x - p.x;
-        const dy = obj.y - p.y;
+        let dx = obj.x - p.x;
+        let dy = obj.y - p.y;
+        if (Math.abs(dx) > CONFIG.MAZE_COLS/2) dx = dx > 0 ? dx - CONFIG.MAZE_COLS : dx + CONFIG.MAZE_COLS;
+        if (Math.abs(dy) > CONFIG.MAZE_ROWS/2) dy = dy > 0 ? dy - CONFIG.MAZE_ROWS : dy + CONFIG.MAZE_ROWS;
+        
         const dist = Math.sqrt(dx*dx + dy*dy);
         if (dist <= detectionRadius) {
             const pred = evaluateObjectValence(obj, resolvedChips);
-            if (pred === 'harmful' && dist < closestHarmfulDist) {
-                closestHarmful = obj;
-                closestHarmfulDist = dist;
-            } else if (pred === 'beneficial' && dist < closestBeneficialDist) {
-                closestBeneficial = obj;
-                closestBeneficialDist = dist;
-            }
+            if (pred === 'harmful') dangers.push({obj, dist});
+            else if (pred === 'beneficial') targets.push({obj, dist});
         }
+    }
+    
+    targets.sort((a, b) => a.dist - b.dist);
+    dangers.sort((a, b) => a.dist - b.dist);
+    
+    const closestHarmful = dangers.length > 0 ? dangers[0].obj : null;
+    
+    // Danger Map for BFS
+    const dangerMap = new Set();
+    for (const danger of dangers) {
+        const hx = Math.floor(danger.obj.x);
+        const hy = Math.floor(danger.obj.y);
+        for (const d of [ {dx:0,dy:0}, {dx:1,dy:0}, {dx:-1,dy:0}, {dx:0,dy:1}, {dx:0,dy:-1} ]) {
+            let wx = hx + d.dx;
+            let wy = hy + d.dy;
+            if (wx < 0) wx += CONFIG.MAZE_COLS; else if (wx >= CONFIG.MAZE_COLS) wx -= CONFIG.MAZE_COLS;
+            if (wy < 0) wy += CONFIG.MAZE_ROWS; else if (wy >= CONFIG.MAZE_ROWS) wy -= CONFIG.MAZE_ROWS;
+            dangerMap.add(`${wx},${wy}`);
+        }
+    }
+    
+    let path = null;
+    for (const target of targets) {
+        let tx = Math.floor(target.obj.x);
+        let ty = Math.floor(target.obj.y);
+        path = bfs(gridX, gridY, tx, ty, dangerMap);
+        if (path && path.length > 0) break; // Found a safe path to a target!
     }
     
     let nextDirs = [];
@@ -1091,36 +1098,25 @@ function decideNextAIAction() {
     });
     
     if (validDirs.length === 0) return; // Trapped
-    
-    // Danger Map for BFS
-    const dangerMap = new Set();
-    for (const obj of GameState.objects) {
-        const pred = evaluateObjectValence(obj, resolvedChips);
-        if (pred === 'harmful') {
-            const hx = Math.floor(obj.x);
-            const hy = Math.floor(obj.y);
-            for (const d of [ {dx:0,dy:0}, {dx:1,dy:0}, {dx:-1,dy:0}, {dx:0,dy:1}, {dx:0,dy:-1} ]) {
-                let wx = hx + d.dx;
-                let wy = hy + d.dy;
-                if (wx < 0) wx += CONFIG.MAZE_COLS; else if (wx >= CONFIG.MAZE_COLS) wx -= CONFIG.MAZE_COLS;
-                if (wy < 0) wy += CONFIG.MAZE_ROWS; else if (wy >= CONFIG.MAZE_ROWS) wy -= CONFIG.MAZE_ROWS;
-                dangerMap.add(`${wx},${wy}`);
-            }
-        }
-    }
-    
-    if (closestHarmful) {
+
+    if (path && path.length > 0) {
+        p.state = 'HUNT';
+        let dx = path[0].x - gridX;
+        let dy = path[0].y - gridY;
+        // Fix wrap around direction
+        if (dx > 1) dx = -1; else if (dx < -1) dx = 1;
+        if (dy > 1) dy = -1; else if (dy < -1) dy = 1;
+        nextDirs = [ {dx, dy} ];
+    } else if (closestHarmful) {
         p.state = 'AVOID';
         let maxDist = -1;
         for (const d of validDirs) {
-            let hx = closestHarmful.x;
-            let hy = closestHarmful.y;
             let nx = gridX + d.dx + 0.5;
             let ny = gridY + d.dy + 0.5;
             
-            // Handle wrap-around distance approximation (simple)
-            let dx = nx - hx;
-            let dy = ny - hy;
+            // Handle wrap-around distance approximation
+            let dx = nx - closestHarmful.x;
+            let dy = ny - closestHarmful.y;
             if (Math.abs(dx) > CONFIG.MAZE_COLS/2) dx = CONFIG.MAZE_COLS - Math.abs(dx);
             if (Math.abs(dy) > CONFIG.MAZE_ROWS/2) dy = CONFIG.MAZE_ROWS - Math.abs(dy);
             
@@ -1131,21 +1127,6 @@ function decideNextAIAction() {
             } else if (ndist === maxDist) {
                 nextDirs.push(d);
             }
-        }
-    } else if (closestBeneficial) {
-        p.state = 'HUNT';
-        let tx = Math.floor(closestBeneficial.x);
-        let ty = Math.floor(closestBeneficial.y);
-        const path = bfs(gridX, gridY, tx, ty, dangerMap);
-        if (path && path.length > 0) {
-            let dx = path[0].x - gridX;
-            let dy = path[0].y - gridY;
-            // Fix wrap around direction
-            if (dx > 1) dx = -1; else if (dx < -1) dx = 1;
-            if (dy > 1) dy = -1; else if (dy < -1) dy = 1;
-            nextDirs = [ {dx, dy} ];
-        } else {
-            p.state = 'WANDER';
         }
     } else {
         p.state = 'WANDER';
@@ -1360,6 +1341,35 @@ function updateObjects(dt) {
             
             if (hitY) obj.vy *= -1;
             else obj.y = ny;
+            
+            // Object to object collision (bouncing)
+            for (let j = 0; j < GameState.objects.length; j++) {
+                if (i !== j) {
+                    const other = GameState.objects[j];
+                    let ox = obj.x - other.x;
+                    let oy = obj.y - other.y;
+                    if (Math.abs(ox) > CONFIG.MAZE_COLS/2) ox = ox > 0 ? ox - CONFIG.MAZE_COLS : ox + CONFIG.MAZE_COLS;
+                    if (Math.abs(oy) > CONFIG.MAZE_ROWS/2) oy = oy > 0 ? oy - CONFIG.MAZE_ROWS : oy + CONFIG.MAZE_ROWS;
+                    
+                    const odist = Math.sqrt(ox*ox + oy*oy);
+                    if (odist > 0 && odist < radius * 2) {
+                        // Swap velocities (elastic collision approximation)
+                        const tempVx = obj.vx;
+                        const tempVy = obj.vy;
+                        obj.vx = other.vx || -obj.vx;
+                        obj.vy = other.vy || -obj.vy;
+                        if (other.motion === 'moving') {
+                            other.vx = tempVx;
+                            other.vy = tempVy;
+                        }
+                        
+                        // Push apart to prevent sticking
+                        const force = (radius * 2 - odist) / odist * 0.1;
+                        obj.x += ox * force;
+                        obj.y += oy * force;
+                    }
+                }
+            }
             
             // Wrap around coordinates
             if (obj.x < 0) obj.x += CONFIG.MAZE_COLS;
@@ -1846,20 +1856,18 @@ function renderHUD() {
     if (!expText) {
         expText = document.createElement('div');
         expText.id = 'exp-text-display';
-        expText.style.position = 'absolute';
-        expText.style.left = '0';
-        expText.style.right = '0';
-        expText.style.top = '0';
-        expText.style.bottom = '0';
+        expText.style.marginLeft = '10px';
         expText.style.display = 'flex';
         expText.style.alignItems = 'center';
         expText.style.justifyContent = 'center';
-        expText.style.fontSize = '8px';
+        expText.style.fontSize = '12px';
         expText.style.color = '#ffffff';
         expText.style.textShadow = '1px 1px 0px #000000';
         expText.style.fontFamily = "'Press Start 2P', monospace";
-        expText.style.zIndex = '2';
-        outerBar.appendChild(expText);
+        expText.style.whiteSpace = 'nowrap';
+        outerBar.parentElement.style.display = 'flex';
+        outerBar.parentElement.style.alignItems = 'center';
+        outerBar.parentElement.appendChild(expText);
     }
     expText.textContent = `${Math.floor(GameState.exp)} / ${expReq}`;
 
@@ -2289,19 +2297,21 @@ function renderFrame() {
         }
     }
 
-    // Render player trails
-    for (const trail of GameState.playerTrails || []) {
-        const tx = trail.x * CONFIG.TILE_SIZE;
-        const ty = trail.y * CONFIG.TILE_SIZE;
-        mctx.fillStyle = `rgba(255, 255, 255, ${trail.life * 0.3})`;
-        mctx.beginPath();
-        mctx.arc(tx, ty, (CONFIG.TILE_SIZE * 0.3) * trail.life, 0, Math.PI * 2);
-        mctx.fill();
-    }
-
-    // Render player
+    // Render Player FOV (Field of View)
     const px = GameState.player.x * CONFIG.TILE_SIZE;
     const py = GameState.player.y * CONFIG.TILE_SIZE;
+    
+    mctx.save();
+    mctx.fillStyle = 'rgba(0, 255, 65, 0.05)';
+    mctx.strokeStyle = 'rgba(0, 255, 65, 0.15)';
+    mctx.lineWidth = 1;
+    mctx.beginPath();
+    mctx.arc(px, py, GameState.detectRadius * CONFIG.TILE_SIZE, 0, Math.PI * 2);
+    mctx.fill();
+    mctx.stroke();
+    mctx.restore();
+
+    // Render player
     const playerSize = CONFIG.TILE_SIZE * 0.7;
 
     // Invincibility blink
@@ -2324,6 +2334,9 @@ function renderFrame() {
 
     renderCircuitBoard(bctx, CONFIG.BOARD_COLS, CONFIG.BOARD_ROWS, CONFIG.CELL_SIZE);
     
+    // Resolve all chips once for rendering
+    const resolvedChips = getResolvedChips();
+    
     // Render Chips
     for (const chip of GameState.chips) {
         const cx = chip.x * CONFIG.CELL_SIZE;
@@ -2336,14 +2349,18 @@ function renderFrame() {
         bctx.lineWidth = 1;
         bctx.strokeRect(cx + 2, cy + 2, CONFIG.CELL_SIZE - 4, CONFIG.CELL_SIZE - 4);
         
+        // Get resolved attributes for rendering
+        const resolved = resolvedChips.find(r => r.id === chip.id);
+        const attrToRender = resolved ? resolved.attr : chip.attributes;
+        
         // Render attributes on chip
         const attrSize = CONFIG.CELL_SIZE * 0.6;
         const centerX = cx + CONFIG.CELL_SIZE / 2;
         const centerY = cy + CONFIG.CELL_SIZE / 2;
         
-        if (chip.attributes.shape) {
-            const color = chip.attributes.color ? CUD_COLORS[chip.attributes.color] : '#888';
-            drawShape(bctx, centerX, centerY, attrSize, chip.attributes.shape, color, chip.attributes.texture || 'solid', null);
+        if (attrToRender.shape) {
+            const color = attrToRender.color ? CUD_COLORS[attrToRender.color] : '#888';
+            drawShape(bctx, centerX, centerY, attrSize, attrToRender.shape, color, attrToRender.texture || 'solid', null);
         } else {
             // Empty chip placeholder
             bctx.fillStyle = '#112211';
@@ -2351,8 +2368,8 @@ function renderFrame() {
         }
         
         // Render valence icon (small in corner)
-        if (chip.attributes.valence) {
-            drawValenceIcon(bctx, cx + CONFIG.CELL_SIZE - 12, cy + 12, 14, chip.attributes.valence);
+        if (attrToRender.valence) {
+            drawValenceIcon(bctx, cx + CONFIG.CELL_SIZE - 12, cy + 12, 14, attrToRender.valence);
         }
         
         // Render Delete X if selected
