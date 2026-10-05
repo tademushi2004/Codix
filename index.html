@@ -157,17 +157,9 @@ html, body {
 #exp-bar-inner {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #005577, var(--exp-fill));
+    background: #00ff41;
     transition: width 0.3s ease;
     position: relative;
-}
-
-#exp-bar-inner::after {
-    content: '';
-    position: absolute;
-    top: 0; right: 0;
-    width: 4px; height: 100%;
-    background: rgba(255,255,255,0.3);
 }
 
 /* ========== 4. MAZE CANVAS ========== */
@@ -506,11 +498,11 @@ html, body {
 const CONFIG = {
     MAZE_COLS: 20,
     MAZE_ROWS: 15,
-    BOARD_COLS: 16,
-    BOARD_ROWS: 12,
+    BOARD_COLS: 12,
+    BOARD_ROWS: 9,
     TILE_SIZE: 24,         // maze tile size in pixels
-    CELL_SIZE: 32,         // circuit board cell size
-    SPRITE_SIZE: 16,       // object sprite size
+    CELL_SIZE: 48,         // circuit board cell size
+    SPRITE_SIZE: 24,       // object sprite size
     PLAYER_SPEED: 1.5,     // tiles per second
     MAX_HP: 5,
     INVINCIBLE_DURATION: 2000, // ms
@@ -623,10 +615,9 @@ const CUD_COLORS = {
     magenta: '#CC79A7',
 };
 
-const SHAPES = ['triangle', 'square', 'circle', 'star'];
+const SHAPES = ['triangle', 'square', 'pentagon', 'hexagon', 'circle', 'star'];
 const COLORS = ['orange', 'cyan', 'magenta'];
 const TEXTURES = ['solid', 'striped'];
-const MOTIONS = ['static', 'moving'];
 const VALENCES = ['harmful', 'beneficial', 'neutral'];
 
 // Shape sides (for EXP calculation)
@@ -797,6 +788,7 @@ const GameState = {
 
     // Player position (in tile coords, fractional)
     player: { x: 0, y: 0, dir: 'right', speed: CONFIG.PLAYER_SPEED },
+    playerTrails: [],
 
     // AI state
     aiState: 'wander', // 'wander' | 'informed'
@@ -839,6 +831,7 @@ function resetGameState() {
     GameState.detectRadius = DETECT_RADIUS[GameState.playerShape] || 3;
     GameState.objects = [];
     GameState.chips = [];
+    GameState.playerTrails = [];
     GameState.nextChipId = 1;
     GameState.objectSpawnTimer = 0;
 
@@ -867,11 +860,11 @@ function loadStage(stageNum) {
 
 // Stage Attribute Pools
 const STAGE_POOLS = {
-    1: { shapes: ['triangle', 'square', 'circle'], colors: ['orange'], textures: ['solid'], motions: ['static'] },
-    2: { shapes: ['triangle', 'square'], colors: ['orange', 'cyan'], textures: ['solid'], motions: ['static'] },
-    3: { shapes: ['triangle', 'square', 'circle'], colors: ['orange', 'cyan'], textures: ['solid', 'striped'], motions: ['static'] },
-    4: { shapes: ['triangle', 'square', 'circle'], colors: ['orange', 'cyan', 'magenta'], textures: ['solid', 'striped'], motions: ['static', 'moving'] },
-    5: { shapes: ['triangle', 'square', 'circle', 'star'], colors: ['orange', 'cyan', 'magenta'], textures: ['solid', 'striped'], motions: ['static', 'moving'] }
+    1: { shapes: ['triangle', 'square', 'circle'], colors: ['orange'], textures: ['solid'] },
+    2: { shapes: ['triangle', 'square'], colors: ['orange', 'cyan'], textures: ['solid'] },
+    3: { shapes: ['triangle', 'square', 'circle'], colors: ['orange', 'cyan'], textures: ['solid', 'striped'] },
+    4: { shapes: ['triangle', 'square', 'circle'], colors: ['orange', 'cyan', 'magenta'], textures: ['solid', 'striped'] },
+    5: { shapes: ['triangle', 'square', 'circle', 'star'], colors: ['orange', 'cyan', 'magenta'], textures: ['solid', 'striped'] }
 };
 
 // Shuffle valences for all 48 object types
@@ -882,13 +875,11 @@ function shuffleValences() {
         for (const shape of SHAPES) {
             for (const color of COLORS) {
                 for (const texture of TEXTURES) {
-                    for (const motion of MOTIONS) {
-                        const key = `${shape}_${color}_${texture}_${motion}`;
-                        const r = Math.random();
-                        if (r < 0.4) GameState.valenceMap[key] = 'harmful';
-                        else if (r < 0.8) GameState.valenceMap[key] = 'beneficial';
-                        else GameState.valenceMap[key] = 'neutral';
-                    }
+                    const key = `${shape}_${color}_${texture}`;
+                    const r = Math.random();
+                    if (r < 0.4) GameState.valenceMap[key] = 'harmful';
+                    else if (r < 0.8) GameState.valenceMap[key] = 'beneficial';
+                    else GameState.valenceMap[key] = 'neutral';
                 }
             }
         }
@@ -903,11 +894,9 @@ function checkValenceBalance() {
         for (const shape of pool.shapes) {
             for (const color of pool.colors) {
                 for (const texture of pool.textures) {
-                    for (const motion of pool.motions) {
-                        const key = `${shape}_${color}_${texture}_${motion}`;
-                        if (GameState.valenceMap[key] === 'beneficial') {
-                            beneficialCount++;
-                        }
+                    const key = `${shape}_${color}_${texture}`;
+                    if (GameState.valenceMap[key] === 'beneficial') {
+                        beneficialCount++;
                     }
                 }
             }
@@ -930,6 +919,21 @@ function updateGame(dt) {
     }
     
     updateAIMovement(dt);
+    
+    // Add player trail
+    const p = GameState.player;
+    if (Math.random() < 0.2 || p.x !== (p.lastX || p.x) || p.y !== (p.lastY || p.y)) {
+        GameState.playerTrails.push({ x: p.x, y: p.y, life: 1.0 });
+        p.lastX = p.x;
+        p.lastY = p.y;
+    }
+    // Update player trails
+    for (let i = GameState.playerTrails.length - 1; i >= 0; i--) {
+        GameState.playerTrails[i].life -= (dt / 500); // 0.5s fade
+        if (GameState.playerTrails[i].life <= 0) {
+            GameState.playerTrails.splice(i, 1);
+        }
+    }
     
     if (GameState.flash && GameState.flash.alpha > 0) {
         GameState.flash.alpha -= dt * 0.003;
@@ -991,7 +995,7 @@ function evaluateObjectValence(obj, resolvedChips) {
         
         let definedCount = 0;
         let match = true;
-        for (const k of ['shape', 'color', 'texture', 'motion']) {
+        for (const k of ['shape', 'color', 'texture']) {
             if (res.attr[k]) {
                 definedCount++;
                 if (res.attr[k] !== obj[k]) {
@@ -1031,6 +1035,13 @@ function updateAIMovement(dt) {
     if (dist <= Math.max(speed, 0.05)) { // Arrived
         p.x = p.targetX + 0.5;
         p.y = p.targetY + 0.5;
+        
+        // Wrap around logic
+        if (p.x < 0) p.x += CONFIG.MAZE_COLS;
+        else if (p.x >= CONFIG.MAZE_COLS) p.x -= CONFIG.MAZE_COLS;
+        if (p.y < 0) p.y += CONFIG.MAZE_ROWS;
+        else if (p.y >= CONFIG.MAZE_ROWS) p.y -= CONFIG.MAZE_ROWS;
+        
         decideNextAIAction();
     } else {
         p.x += (dx / dist) * speed;
@@ -1072,20 +1083,48 @@ function decideNextAIAction() {
     let nextDirs = [];
     const possibleDirs = [ {dx:1,dy:0}, {dx:-1,dy:0}, {dx:0,dy:1}, {dx:0,dy:-1} ];
     const validDirs = possibleDirs.filter(d => {
-        const nx = gridX + d.dx;
-        const ny = gridY + d.dy;
+        let nx = gridX + d.dx;
+        let ny = gridY + d.dy;
+        if (nx < 0) nx += CONFIG.MAZE_COLS; else if (nx >= CONFIG.MAZE_COLS) nx -= CONFIG.MAZE_COLS;
+        if (ny < 0) ny += CONFIG.MAZE_ROWS; else if (ny >= CONFIG.MAZE_ROWS) ny -= CONFIG.MAZE_ROWS;
         return GameState.maze[ny] && GameState.maze[ny][nx] === 0;
     });
     
     if (validDirs.length === 0) return; // Trapped
     
+    // Danger Map for BFS
+    const dangerMap = new Set();
+    for (const obj of GameState.objects) {
+        const pred = evaluateObjectValence(obj, resolvedChips);
+        if (pred === 'harmful') {
+            const hx = Math.floor(obj.x);
+            const hy = Math.floor(obj.y);
+            for (const d of [ {dx:0,dy:0}, {dx:1,dy:0}, {dx:-1,dy:0}, {dx:0,dy:1}, {dx:0,dy:-1} ]) {
+                let wx = hx + d.dx;
+                let wy = hy + d.dy;
+                if (wx < 0) wx += CONFIG.MAZE_COLS; else if (wx >= CONFIG.MAZE_COLS) wx -= CONFIG.MAZE_COLS;
+                if (wy < 0) wy += CONFIG.MAZE_ROWS; else if (wy >= CONFIG.MAZE_ROWS) wy -= CONFIG.MAZE_ROWS;
+                dangerMap.add(`${wx},${wy}`);
+            }
+        }
+    }
+    
     if (closestHarmful) {
         p.state = 'AVOID';
         let maxDist = -1;
         for (const d of validDirs) {
-            const hx = closestHarmful.x;
-            const hy = closestHarmful.y;
-            const ndist = Math.sqrt(Math.pow(gridX + d.dx + 0.5 - hx, 2) + Math.pow(gridY + d.dy + 0.5 - hy, 2));
+            let hx = closestHarmful.x;
+            let hy = closestHarmful.y;
+            let nx = gridX + d.dx + 0.5;
+            let ny = gridY + d.dy + 0.5;
+            
+            // Handle wrap-around distance approximation (simple)
+            let dx = nx - hx;
+            let dy = ny - hy;
+            if (Math.abs(dx) > CONFIG.MAZE_COLS/2) dx = CONFIG.MAZE_COLS - Math.abs(dx);
+            if (Math.abs(dy) > CONFIG.MAZE_ROWS/2) dy = CONFIG.MAZE_ROWS - Math.abs(dy);
+            
+            const ndist = Math.sqrt(dx*dx + dy*dy);
             if (ndist > maxDist) {
                 maxDist = ndist;
                 nextDirs = [d];
@@ -1095,9 +1134,16 @@ function decideNextAIAction() {
         }
     } else if (closestBeneficial) {
         p.state = 'HUNT';
-        const path = bfs(gridX, gridY, Math.floor(closestBeneficial.x), Math.floor(closestBeneficial.y));
+        let tx = Math.floor(closestBeneficial.x);
+        let ty = Math.floor(closestBeneficial.y);
+        const path = bfs(gridX, gridY, tx, ty, dangerMap);
         if (path && path.length > 0) {
-            nextDirs = [ {dx: path[0].x - gridX, dy: path[0].y - gridY} ];
+            let dx = path[0].x - gridX;
+            let dy = path[0].y - gridY;
+            // Fix wrap around direction
+            if (dx > 1) dx = -1; else if (dx < -1) dx = 1;
+            if (dy > 1) dy = -1; else if (dy < -1) dy = 1;
+            nextDirs = [ {dx, dy} ];
         } else {
             p.state = 'WANDER';
         }
@@ -1126,19 +1172,24 @@ function decideNextAIAction() {
     if (chosenDir.dy < 0) p.dir = 'up';
 }
 
-function bfs(sx, sy, tx, ty) {
+function bfs(sx, sy, tx, ty, dangerMap = new Set()) {
     if (sx === tx && sy === ty) return [];
     
     const queue = [{x: sx, y: sy, path: []}];
     const visited = new Set();
     visited.add(`${sx},${sy}`);
     
+    let fallbackPath = null;
+    
     while (queue.length > 0) {
         const curr = queue.shift();
         
         for (const d of [ {dx:1,dy:0}, {dx:-1,dy:0}, {dx:0,dy:1}, {dx:0,dy:-1} ]) {
-            const nx = curr.x + d.dx;
-            const ny = curr.y + d.dy;
+            let nx = curr.x + d.dx;
+            let ny = curr.y + d.dy;
+            
+            if (nx < 0) nx += CONFIG.MAZE_COLS; else if (nx >= CONFIG.MAZE_COLS) nx -= CONFIG.MAZE_COLS;
+            if (ny < 0) ny += CONFIG.MAZE_ROWS; else if (ny >= CONFIG.MAZE_ROWS) ny -= CONFIG.MAZE_ROWS;
             
             if (nx === tx && ny === ty) {
                 return curr.path.concat({x: nx, y: ny});
@@ -1146,11 +1197,16 @@ function bfs(sx, sy, tx, ty) {
             
             if (GameState.maze[ny] && GameState.maze[ny][nx] === 0 && !visited.has(`${nx},${ny}`)) {
                 visited.add(`${nx},${ny}`);
-                queue.push({x: nx, y: ny, path: curr.path.concat({x: nx, y: ny})});
+                const nextNode = {x: nx, y: ny, path: curr.path.concat({x: nx, y: ny})};
+                if (!dangerMap.has(`${nx},${ny}`)) {
+                    queue.push(nextNode);
+                } else if (!fallbackPath) {
+                    fallbackPath = nextNode.path; // Save one dangerous path just in case
+                }
             }
         }
     }
-    return null;
+    return fallbackPath;
 }
 
 function spawnObject() {
@@ -1158,7 +1214,7 @@ function spawnObject() {
     const shape = pool.shapes[Math.floor(Math.random() * pool.shapes.length)];
     const color = pool.colors[Math.floor(Math.random() * pool.colors.length)];
     const texture = pool.textures[Math.floor(Math.random() * pool.textures.length)];
-    const motion = pool.motions[Math.floor(Math.random() * pool.motions.length)];
+    const motion = Math.random() < 0.5 ? 'static' : 'moving';
     
     const entry = GameState.entryPoints[Math.floor(Math.random() * GameState.entryPoints.length)];
     
@@ -1244,6 +1300,41 @@ function updateObjects(dt) {
         }
         
         if (obj.motion === 'moving') {
+            const key = `${obj.shape}_${obj.color}_${obj.texture}`;
+            const trueValence = GameState.valenceMap[key] || 'neutral';
+            
+            const px = GameState.player.x;
+            const py = GameState.player.y;
+            let dx = px - obj.x;
+            let dy = py - obj.y;
+            
+            // Wrap around shortest distance logic
+            if (Math.abs(dx) > CONFIG.MAZE_COLS/2) dx = dx > 0 ? dx - CONFIG.MAZE_COLS : dx + CONFIG.MAZE_COLS;
+            if (Math.abs(dy) > CONFIG.MAZE_ROWS/2) dy = dy > 0 ? dy - CONFIG.MAZE_ROWS : dy + CONFIG.MAZE_ROWS;
+            
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            let targetVx = obj.vx;
+            let targetVy = obj.vy;
+            const aiSpeed = 1.0;
+            
+            if (dist < 8.0) { // Only react if somewhat close
+                if (trueValence === 'harmful') {
+                    // Chase
+                    targetVx = (dx / dist) * aiSpeed;
+                    targetVy = (dy / dist) * aiSpeed;
+                } else if (trueValence === 'beneficial') {
+                    // Flee
+                    targetVx = -(dx / dist) * aiSpeed;
+                    targetVy = -(dy / dist) * aiSpeed;
+                }
+            }
+            
+            if (trueValence !== 'neutral') {
+                obj.vx = obj.vx * 0.9 + targetVx * 0.1;
+                obj.vy = obj.vy * 0.9 + targetVy * 0.1;
+            }
+
             const nx = obj.x + obj.vx * speedScale;
             const ny = obj.y + obj.vy * speedScale;
             
@@ -1252,7 +1343,10 @@ function updateObjects(dt) {
                 const minR = Math.floor(py - radius), maxR = Math.floor(py + radius);
                 for (let r = minR; r <= maxR; r++) {
                     for (let c = minC; c <= maxC; c++) {
-                        if (GameState.maze[r] && GameState.maze[r][c] === 1) return true;
+                        let wr = r, wc = c;
+                        if (wr < 0) wr += CONFIG.MAZE_ROWS; else if (wr >= CONFIG.MAZE_ROWS) wr -= CONFIG.MAZE_ROWS;
+                        if (wc < 0) wc += CONFIG.MAZE_COLS; else if (wc >= CONFIG.MAZE_COLS) wc -= CONFIG.MAZE_COLS;
+                        if (GameState.maze[wr] && GameState.maze[wr][wc] === 1) return true;
                     }
                 }
                 return false;
@@ -1266,6 +1360,12 @@ function updateObjects(dt) {
             
             if (hitY) obj.vy *= -1;
             else obj.y = ny;
+            
+            // Wrap around coordinates
+            if (obj.x < 0) obj.x += CONFIG.MAZE_COLS;
+            else if (obj.x >= CONFIG.MAZE_COLS) obj.x -= CONFIG.MAZE_COLS;
+            if (obj.y < 0) obj.y += CONFIG.MAZE_ROWS;
+            else if (obj.y >= CONFIG.MAZE_ROWS) obj.y -= CONFIG.MAZE_ROWS;
         }
         
         const dx = GameState.player.x - obj.x;
@@ -1280,7 +1380,7 @@ function updateObjects(dt) {
 }
 
 function handleCollision(obj) {
-    const key = `${obj.shape}_${obj.color}_${obj.texture}_${obj.motion}`;
+    const key = `${obj.shape}_${obj.color}_${obj.texture}`;
     const valence = GameState.valenceMap[key] || 'neutral';
     
     if (valence === 'harmful') {
@@ -1320,11 +1420,10 @@ function applyHeal(expAmount) {
     }
 }
 
-function calculateExp(shape, motion) {
+function calculateExp(shape) {
     const sides = SHAPE_SIDES[shape] || 3;
     const base = sides - 2; // Tri=1, Sqr=2, Pent/Cir=3, Hex/Star=4
-    const mult = (motion === 'moving') ? 2 : 1;
-    return base * mult;
+    return base;
 }
 
 function continueGame() {
@@ -1334,6 +1433,7 @@ function continueGame() {
     GameState.invincibleTimer = CONFIG.INVINCIBLE_DURATION;
     GameState.phase = 'playing';
     hideScreens();
+    AudioSys.startBGM();
 }
 
 function calculateGrade() {
@@ -1561,13 +1661,60 @@ function drawShape(ctx, x, y, size, shape, fillColor, texture, borderPattern) {
     ctx.restore();
 }
 
-// Draw player character (white + directional eye dot)
+function drawValenceIcon(ctx, cx, cy, size, valence) {
+    if (valence === 'harmful') {
+        // Red Warning Triangle
+        ctx.fillStyle = '#ff3333';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - size/2);
+        ctx.lineTo(cx + size/2.3, cy + size/2.3);
+        ctx.lineTo(cx - size/2.3, cy + size/2.3);
+        ctx.fill();
+        // White Exclamation mark
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(cx - size/10, cy - size/6, size/5, size/2.5);
+        ctx.fillRect(cx - size/10, cy + size/3, size/5, size/5);
+    } else if (valence === 'beneficial') {
+        // Green Heart (approximated with circles and triangle)
+        ctx.fillStyle = '#00ff41';
+        ctx.beginPath();
+        ctx.arc(cx - size/4, cy - size/6, size/3, Math.PI, 0);
+        ctx.arc(cx + size/4, cy - size/6, size/3, Math.PI, 0);
+        ctx.lineTo(cx, cy + size/2);
+        ctx.fill();
+    } else if (valence === 'neutral') {
+        // Gray dot
+        ctx.fillStyle = '#888888';
+        ctx.beginPath();
+        ctx.arc(cx, cy, size/4, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+// Draw player character (white + directional eye dot) with squash and stretch
 function drawPlayer(ctx, x, y, size, shape, direction) {
-    drawShape(ctx, x, y, size, shape, '#ffffff', 'solid', null);
+    const time = Date.now();
+    const bounce = Math.sin(time / 100) * 0.15; // Squash/Stretch factor
+    
+    let sx = 1.0;
+    let sy = 1.0;
+    if (direction === 'left' || direction === 'right') {
+        sx = 1.0 + bounce;
+        sy = 1.0 - bounce;
+    } else {
+        sx = 1.0 - bounce;
+        sy = 1.0 + bounce;
+    }
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(sx, Math.max(0.1, sy));
+    
+    drawShape(ctx, 0, 0, size, shape, '#ffffff', 'solid', null);
 
     // Eye dot (black)
     const eyeOffset = size * 0.2;
-    let ex = x, ey = y;
+    let ex = 0, ey = 0;
     switch (direction) {
         case 'right': ex += eyeOffset; break;
         case 'left':  ex -= eyeOffset; break;
@@ -1576,6 +1723,8 @@ function drawPlayer(ctx, x, y, size, shape, direction) {
     }
     ctx.fillStyle = '#000000';
     ctx.fillRect(Math.round(ex) - 1, Math.round(ey) - 1, 3, 3);
+    
+    ctx.restore();
 }
 
 
@@ -1691,19 +1840,28 @@ function renderHUD() {
     const expReq = STAGE_EXP[GameState.stage] || 10;
     const expPct = Math.min(100, (GameState.exp / expReq) * 100);
     const outerBar = document.getElementById('exp-bar-outer');
-    outerBar.style.backgroundImage = 'repeating-linear-gradient(90deg, transparent, transparent 9.5%, rgba(255,255,255,0.3) 9.5%, rgba(255,255,255,0.3) 10%)';
     document.getElementById('exp-bar-inner').style.width = expPct + '%';
     
     let expText = document.getElementById('exp-text-display');
     if (!expText) {
         expText = document.createElement('div');
         expText.id = 'exp-text-display';
+        expText.style.position = 'absolute';
+        expText.style.left = '0';
+        expText.style.right = '0';
+        expText.style.top = '0';
+        expText.style.bottom = '0';
+        expText.style.display = 'flex';
+        expText.style.alignItems = 'center';
+        expText.style.justifyContent = 'center';
         expText.style.fontSize = '8px';
-        expText.style.color = 'var(--text-accent)';
+        expText.style.color = '#ffffff';
+        expText.style.textShadow = '1px 1px 0px #000000';
         expText.style.fontFamily = "'Press Start 2P', monospace";
-        document.getElementById('exp-container').appendChild(expText);
+        expText.style.zIndex = '2';
+        outerBar.appendChild(expText);
     }
-    expText.textContent = `${Math.floor(GameState.exp)}/${expReq}`;
+    expText.textContent = `${Math.floor(GameState.exp)} / ${expReq}`;
 
     // Player shape display
     const shapeCanvas = document.getElementById('player-shape-display');
@@ -1773,58 +1931,12 @@ function setupPartsTray() {
     }
     container.appendChild(texSection);
 
-    // Motion blocks
-    const motionSection = createTraySection();
-    for (const motion of MOTIONS) {
-        const block = createTrayBlock(16, (ctx, s) => {
-            ctx.fillStyle = '#cccccc';
-            if (motion === 'static') {
-                ctx.fillRect(s/2 - 3, s/2 - 3, 6, 6);
-            } else {
-                // Arrow
-                ctx.beginPath();
-                ctx.moveTo(3, s/2);
-                ctx.lineTo(s - 5, s/2);
-                ctx.lineTo(s - 7, s/2 - 3);
-                ctx.moveTo(s - 5, s/2);
-                ctx.lineTo(s - 7, s/2 + 3);
-                ctx.strokeStyle = '#cccccc';
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-            }
-        });
-        block.dataset.category = 'motion';
-        block.dataset.value = motion;
-        block.title = motion;
-        motionSection.appendChild(block);
-    }
-    container.appendChild(motionSection);
-
     // Valence blocks
     const valSection = createTraySection();
     const valIcons = [
-        { v: 'harmful', draw: (ctx, s) => {
-            // Skull
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(s/2-3, s/2-4, 6, 5);
-            ctx.fillRect(s/2-2, s/2+1, 4, 2);
-            ctx.fillStyle = '#000';
-            ctx.fillRect(s/2-2, s/2-2, 2, 2);
-            ctx.fillRect(s/2+1, s/2-2, 2, 2);
-        }},
-        { v: 'beneficial', draw: (ctx, s) => {
-            // Clover/sprout
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(s/2, s/2, 1, 4);
-            ctx.fillRect(s/2-2, s/2-2, 2, 3);
-            ctx.fillRect(s/2+1, s/2-2, 2, 3);
-            ctx.fillRect(s/2-1, s/2-3, 3, 2);
-        }},
-        { v: 'neutral', draw: (ctx, s) => {
-            // Small dot
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(s/2-1, s/2-1, 2, 2);
-        }},
+        { v: 'harmful', draw: (ctx, s) => drawValenceIcon(ctx, s/2, s/2, s * 0.8, 'harmful') },
+        { v: 'beneficial', draw: (ctx, s) => drawValenceIcon(ctx, s/2, s/2, s * 0.8, 'beneficial') },
+        { v: 'neutral', draw: (ctx, s) => drawValenceIcon(ctx, s/2, s/2, s * 0.8, 'neutral') },
     ];
     for (const { v, draw } of valIcons) {
         const block = createTrayBlock(16, draw);
@@ -1838,13 +1950,33 @@ function setupPartsTray() {
     // NEW CHIP button
     const btn = document.getElementById('new-chip-btn');
     if (!btn) {
+        const btnContainer = document.createElement('div');
+        btnContainer.style.display = 'flex';
+        btnContainer.style.gap = '10px';
+        btnContainer.style.marginTop = '10px';
+        
         const newBtn = document.createElement('button');
         newBtn.id = 'new-chip-btn';
         newBtn.textContent = 'NEW CHIP';
         newBtn.addEventListener('click', createNewChip);
-        container.appendChild(newBtn);
-    } else {
-        btn.addEventListener('click', createNewChip);
+        
+        const resetBtn = document.createElement('button');
+        resetBtn.id = 'reset-all-btn';
+        resetBtn.textContent = 'RESET ALL';
+        resetBtn.style.background = '#331111';
+        resetBtn.style.color = '#ff3333';
+        resetBtn.style.borderColor = '#ff3333';
+        resetBtn.addEventListener('click', () => {
+            if (confirm('Clear all chips?')) {
+                GameState.chips = [];
+                GameState.nextChipId = 1;
+                AudioSys.play('error');
+            }
+        });
+        
+        btnContainer.appendChild(newBtn);
+        btnContainer.appendChild(resetBtn);
+        container.appendChild(btnContainer);
     }
     
     // Setup tray drag events
@@ -1868,13 +2000,12 @@ function createNewChip() {
     
     const chip = {
         id: GameState.nextChipId++,
-        x: CONFIG.BOARD_COLS / 2, // Grid coordinates
-        y: CONFIG.BOARD_ROWS / 2,
+        x: Math.floor(CONFIG.BOARD_COLS / 2),
+        y: Math.floor(CONFIG.BOARD_ROWS / 2),
         attributes: {
             shape: null,
             color: null,
             texture: null,
-            motion: null,
             valence: null
         },
         maxPins: GameState.maxPins,
@@ -1943,6 +2074,22 @@ function setupBoardInteraction() {
         const clickedChip = GameState.chips.find(c => c.x === gridX && c.y === gridY);
         
         if (clickedChip) {
+            const cx = clickedChip.x * CONFIG.CELL_SIZE;
+            const cy = clickedChip.y * CONFIG.CELL_SIZE;
+            if (GameState.dragState && GameState.dragState.type === 'chip' && GameState.dragState.chip === clickedChip) {
+                // Clicked the X button (top right corner)
+                if (boardMouse.x >= cx + CONFIG.CELL_SIZE - 16 && boardMouse.y <= cy + 16) {
+                    GameState.chips = GameState.chips.filter(c => c.id !== clickedChip.id);
+                    for (const c of GameState.chips) {
+                        c.parents = c.parents.filter(id => id !== clickedChip.id);
+                        c.children = c.children.filter(id => id !== clickedChip.id);
+                    }
+                    GameState.dragState = null;
+                    if (e.touches) e.preventDefault();
+                    return;
+                }
+            }
+            
             if (e.shiftKey) {
                 GameState.dragState = { type: 'wire', fromChip: clickedChip };
             } else {
@@ -2142,6 +2289,16 @@ function renderFrame() {
         }
     }
 
+    // Render player trails
+    for (const trail of GameState.playerTrails || []) {
+        const tx = trail.x * CONFIG.TILE_SIZE;
+        const ty = trail.y * CONFIG.TILE_SIZE;
+        mctx.fillStyle = `rgba(255, 255, 255, ${trail.life * 0.3})`;
+        mctx.beginPath();
+        mctx.arc(tx, ty, (CONFIG.TILE_SIZE * 0.3) * trail.life, 0, Math.PI * 2);
+        mctx.fill();
+    }
+
     // Render player
     const px = GameState.player.x * CONFIG.TILE_SIZE;
     const py = GameState.player.y * CONFIG.TILE_SIZE;
@@ -2195,8 +2352,16 @@ function renderFrame() {
         
         // Render valence icon (small in corner)
         if (chip.attributes.valence) {
-            bctx.fillStyle = (chip.attributes.valence === 'harmful') ? '#ff3333' : (chip.attributes.valence === 'beneficial' ? '#00ff41' : '#ffffff');
-            bctx.fillRect(cx + 4, cy + 4, 4, 4);
+            drawValenceIcon(bctx, cx + CONFIG.CELL_SIZE - 12, cy + 12, 14, chip.attributes.valence);
+        }
+        
+        // Render Delete X if selected
+        if (GameState.dragState && GameState.dragState.type === 'chip' && GameState.dragState.chip === chip) {
+            bctx.fillStyle = '#ff0000';
+            bctx.fillRect(cx + CONFIG.CELL_SIZE - 16, cy + 2, 14, 14);
+            bctx.fillStyle = '#ffffff';
+            bctx.font = '10px "Press Start 2P"';
+            bctx.fillText('X', cx + CONFIG.CELL_SIZE - 13, cy + 13);
         }
     }
     
@@ -2229,21 +2394,34 @@ function renderFrame() {
     }
     bctx.setLineDash([]);
     
-    // Render current dragged wire
+    // Render wire being dragged
     if (GameState.dragState && GameState.dragState.type === 'wire') {
-        const chip = GameState.dragState.fromChip;
-        const startX = chip.x * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
-        const startY = chip.y * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
+        const fromX = GameState.dragState.fromChip.x * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
+        const fromY = GameState.dragState.fromChip.y * CONFIG.CELL_SIZE + CONFIG.CELL_SIZE / 2;
         
-        bctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
-        bctx.setLineDash([4, 4]);
-        bctx.lineWidth = 2;
         bctx.beginPath();
-        bctx.moveTo(startX, startY);
-        bctx.lineTo(boardMouse.x, startY);
+        bctx.moveTo(fromX, fromY);
         bctx.lineTo(boardMouse.x, boardMouse.y);
+        bctx.strokeStyle = '#00ff41';
+        bctx.lineWidth = 2;
+        bctx.setLineDash([5, 5]);
         bctx.stroke();
         bctx.setLineDash([]);
+    }
+
+    // Render tray part following mouse
+    if (GameState.dragState && GameState.dragState.type === 'tray_part') {
+        bctx.globalAlpha = 0.8;
+        if (GameState.dragState.category === 'valence') {
+            drawValenceIcon(bctx, boardMouse.x, boardMouse.y, 32, GameState.dragState.value);
+        } else if (GameState.dragState.category === 'shape') {
+            drawShape(bctx, boardMouse.x, boardMouse.y, 32, GameState.dragState.value, '#aaaaaa', 'solid', null);
+        } else if (GameState.dragState.category === 'color') {
+            drawShape(bctx, boardMouse.x, boardMouse.y, 32, 'square', CUD_COLORS[GameState.dragState.value], 'solid', null);
+        } else if (GameState.dragState.category === 'texture') {
+            drawShape(bctx, boardMouse.x, boardMouse.y, 32, 'square', '#aaaaaa', GameState.dragState.value, null);
+        }
+        bctx.globalAlpha = 1.0;
     }
 
     // Render drag overlay
