@@ -563,12 +563,58 @@ const AudioSys = {
                 osc.start(t);
                 osc.stop(t + 0.2);
                 break;
+            case 'stageclear':
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                    const o = this.ctx.createOscillator();
+                    o.type = 'triangle';
+                    o.frequency.value = freq;
+                    const g = this.ctx.createGain();
+                    g.gain.setValueAtTime(0, t + i*0.1);
+                    g.gain.linearRampToValueAtTime(0.2, t + i*0.1 + 0.05);
+                    g.gain.exponentialRampToValueAtTime(0.01, t + i*0.1 + 0.3);
+                    o.connect(g);
+                    g.connect(this.ctx.destination);
+                    o.start(t + i*0.1);
+                    o.stop(t + i*0.1 + 0.3);
+                });
+                break;
+            case 'gameover':
+                [261.63, 246.94, 233.08, 220.00].forEach((freq, i) => {
+                    const o = this.ctx.createOscillator();
+                    o.type = 'sawtooth';
+                    o.frequency.value = freq;
+                    const g = this.ctx.createGain();
+                    g.gain.setValueAtTime(0.2, t + i*0.2);
+                    g.gain.exponentialRampToValueAtTime(0.01, t + i*0.2 + 0.5);
+                    o.connect(g);
+                    g.connect(this.ctx.destination);
+                    o.start(t + i*0.2);
+                    o.stop(t + i*0.2 + 0.5);
+                });
+                break;
+            case 'gameclear':
+                [392.00, 392.00, 392.00, 523.25, 659.25, 783.99].forEach((freq, i) => {
+                    const o = this.ctx.createOscillator();
+                    o.type = 'square';
+                    o.frequency.value = freq;
+                    const g = this.ctx.createGain();
+                    const st = t + (i < 3 ? i * 0.15 : 0.45 + (i-3)*0.2);
+                    g.gain.setValueAtTime(0, st);
+                    g.gain.linearRampToValueAtTime(0.2, st + 0.05);
+                    g.gain.exponentialRampToValueAtTime(0.01, st + 0.4);
+                    o.connect(g);
+                    g.connect(this.ctx.destination);
+                    o.start(st);
+                    o.stop(st + 0.4);
+                });
+                break;
         }
     },
     bgmGain: null,
     bgmInterval: null,
     startBGM() {
-        if (!this.ctx || this.bgmInterval) return;
+        if (!this.ctx) return;
+        this.stopBGM();
         
         const notes = [
             261.63, 329.63, 392.00, 523.25, // C4, E4, G4, C5
@@ -577,7 +623,7 @@ const AudioSys = {
         let noteIdx = 0;
         
         this.bgmGain = this.ctx.createGain();
-        this.bgmGain.gain.value = 0.15; // Increased volume
+        this.bgmGain.gain.value = 0.3; // Increased volume
         this.bgmGain.connect(this.ctx.destination);
         
         this.bgmInterval = setInterval(() => {
@@ -713,15 +759,15 @@ const MAZES = [
         [1,0,1,1,1,0,1,1,0,1,0,1,1,0,1,0,0,0,0,1],
         [1,0,0,0,1,0,0,0,0,1,0,0,0,0,1,1,1,0,1,1],
         [1,1,1,0,0,0,1,1,0,0,0,1,1,0,0,0,0,0,0,1],
-        [0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,1,1,0,1],
+        [0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,1,1,0,0],
         [1,0,1,0,1,1,1,0,1,1,1,0,1,1,1,0,0,0,0,1],
         [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,1],
         [1,0,1,1,1,0,1,1,0,1,0,1,1,0,0,0,0,0,0,1],
         [1,0,0,0,1,0,0,0,0,1,0,0,0,0,1,1,1,0,1,1],
         [1,0,1,0,0,0,1,0,1,0,1,0,1,0,0,0,0,0,0,1],
         [1,0,1,1,1,0,1,0,0,0,0,0,1,0,1,0,1,1,0,1],
-        [1,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0],
-        [1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1],
+        [0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0],
+        [1,1,1,1,1,1,0,1,1,0,1,1,0,1,1,1,1,1,1,1],
     ],
     // Stage 5: Most complex, dead ends present
     [
@@ -739,7 +785,7 @@ const MAZES = [
         [1,0,0,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,0,1],
         [1,0,1,1,1,1,1,0,1,0,1,0,1,1,1,1,0,1,0,1],
         [1,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,1],
-        [1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,0,1,1,1],
+        [1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,1],
     ],
 ];
 
@@ -844,6 +890,7 @@ function loadStage(stageNum) {
     GameState.maze = MAZES[stageNum - 1];
     GameState.entryPoints = findEntryPoints(GameState.maze);
     GameState.exp = 0;
+    if (stageNum === 1) GameState.playTime = 0;
     GameState.objects = [];
     GameState.objectSpawnTimer = 0;
 
@@ -926,6 +973,7 @@ function updateGame(dt) {
     }
     
     if (GameState.phase === 'playing') {
+        GameState.playTime = (GameState.playTime || 0) + (dt / 1000);
         GameState.objectSpawnTimer -= dt;
         if (GameState.objectSpawnTimer <= 0 && GameState.objects.length < 6) {
             spawnObject();
@@ -1196,18 +1244,18 @@ function spawnObject() {
     const color = pool.colors[Math.floor(Math.random() * pool.colors.length)];
     const texture = pool.textures[Math.floor(Math.random() * pool.textures.length)];
     const motion = Math.random() < 0.5 ? 'static' : 'moving';
-    
     const entry = GameState.entryPoints[Math.floor(Math.random() * GameState.entryPoints.length)];
     
     let spawnCol = entry.col;
     let spawnRow = entry.row;
     
-    // Find valid empty spots for static or moving objects
+    const aiType = motion === 'moving' ? ['chaser', 'wanderer', 'dasher'][Math.floor(Math.random()*3)] : null;
+    
     let validSpots = [];
-    for (let r = 0; r < 15; r++) {
-        for (let c = 0; c < 20; c++) {
+    for (let r = 0; r < CONFIG.MAZE_ROWS; r++) {
+        for (let c = 0; c < CONFIG.MAZE_COLS; c++) {
             if (GameState.maze[r] && GameState.maze[r][c] === 0) {
-                const isEdge = (r === 0 || r === 14 || c === 0 || c === 19);
+                const isEdge = (r === 0 || r === CONFIG.MAZE_ROWS - 1 || c === 0 || c === CONFIG.MAZE_COLS - 1);
                 let valid = true;
                 
                 if (motion === 'static') {
@@ -1300,14 +1348,30 @@ function updateObjects(dt) {
             const aiSpeed = 1.0;
             
             if (dist < 8.0) { // Only react if somewhat close
-                if (trueValence === 'harmful') {
-                    // Chase
-                    targetVx = (dx / dist) * aiSpeed;
-                    targetVy = (dy / dist) * aiSpeed;
-                } else if (trueValence === 'beneficial') {
-                    // Flee
-                    targetVx = -(dx / dist) * aiSpeed;
-                    targetVy = -(dy / dist) * aiSpeed;
+                if (obj.aiType === 'chaser' || !obj.aiType) {
+                    if (trueValence === 'harmful') {
+                        targetVx = (dx / dist) * aiSpeed;
+                        targetVy = (dy / dist) * aiSpeed;
+                    } else if (trueValence === 'beneficial') {
+                        targetVx = -(dx / dist) * aiSpeed;
+                        targetVy = -(dy / dist) * aiSpeed;
+                    }
+                } else if (obj.aiType === 'dasher') {
+                    if (trueValence === 'harmful') {
+                        if (Math.abs(dx) < 1.0) {
+                            targetVy = Math.sign(dy) * aiSpeed * 2.5;
+                            targetVx = 0;
+                        } else if (Math.abs(dy) < 1.0) {
+                            targetVx = Math.sign(dx) * aiSpeed * 2.5;
+                            targetVy = 0;
+                        }
+                    }
+                } else if (obj.aiType === 'wanderer') {
+                    if (Math.random() < 0.05) {
+                        const angle = Math.random() * Math.PI * 2;
+                        targetVx = Math.cos(angle) * aiSpeed;
+                        targetVy = Math.sin(angle) * aiSpeed;
+                    }
                 }
             }
             
@@ -1459,6 +1523,8 @@ function calculateGrade() {
 }
 
 function showGameOverScreen() {
+    AudioSys.stopBGM();
+    AudioSys.play('gameover');
     let screen = document.getElementById('game-over-screen');
     if (!screen) {
         screen = document.createElement('div');
@@ -1478,6 +1544,8 @@ function showGameOverScreen() {
 }
 
 function showStageClearScreen() {
+    AudioSys.stopBGM();
+    AudioSys.play('stageclear');
     const grade = calculateGrade();
     let screen = document.getElementById('stage-clear-screen');
     if (!screen) {
@@ -1498,7 +1566,6 @@ function showStageClearScreen() {
             screen.style.display = 'none';
             if (GameState.stage >= 5) {
                 GameState.phase = 'gameclear';
-                AudioSys.stopBGM();
                 showGameClearScreen();
             } else {
                 loadStage(GameState.stage + 1);
@@ -1514,6 +1581,8 @@ function showStageClearScreen() {
 }
 
 function showGameClearScreen() {
+    AudioSys.stopBGM();
+    AudioSys.play('gameclear');
     let screen = document.getElementById('game-clear-screen');
     if (!screen) {
         screen = document.createElement('div');
@@ -1522,7 +1591,7 @@ function showGameClearScreen() {
         document.body.appendChild(screen);
         screen.innerHTML = `
             <div style="font-size:32px;color:#00ccff;margin-bottom:20px;text-shadow:0 0 20px #00ccff;">GAME CLEAR!</div>
-            <div style="color:white;font-size:12px;margin-bottom:30px;line-height:1.5;text-align:center;">ALL 1000 BRAINS COMPILED<br><span style="font-size:8px;color:#888;">Thank you for playing</span></div>
+            <div style="color:white;font-size:12px;margin-bottom:30px;line-height:1.5;text-align:center;"><span style="font-size:8px;color:#888;">Thank you for playing</span></div>
             <button id="btn-restart" style="font-family:inherit;font-size:12px;background:#002233;color:#00ccff;border:1px solid #00ccff;padding:10px 20px;cursor:pointer;transition:all 0.2s;">RETURN TO TITLE</button>
         `;
         const btn = document.getElementById('btn-restart');
@@ -1871,6 +1940,26 @@ function renderHUD() {
     }
     expText.textContent = `${Math.floor(GameState.exp)} / ${expReq}`;
 
+    let timeText = document.getElementById('time-text-display');
+    if (!timeText) {
+        timeText = document.createElement('div');
+        timeText.id = 'time-text-display';
+        timeText.className = 'stat-item';
+        timeText.style.marginLeft = '20px';
+        timeText.style.display = 'flex';
+        timeText.style.alignItems = 'center';
+        timeText.style.justifyContent = 'center';
+        timeText.style.fontSize = '12px';
+        timeText.style.color = '#ffff00';
+        timeText.style.textShadow = '1px 1px 0px #000000';
+        timeText.style.fontFamily = "'Press Start 2P', monospace";
+        timeText.style.whiteSpace = 'nowrap';
+        document.getElementById('exp-container').appendChild(timeText);
+    }
+    const mins = Math.floor((GameState.playTime || 0) / 60);
+    const secs = Math.floor((GameState.playTime || 0) % 60);
+    timeText.textContent = `TIME: ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
     // Player shape display
     const shapeCanvas = document.getElementById('player-shape-display');
     const sctx = shapeCanvas.getContext('2d');
@@ -1987,11 +2076,51 @@ function setupPartsTray() {
         container.appendChild(btnContainer);
     }
     
-    // Setup tray drag events
+    // Wire block
+    const wireSection = createTraySection();
+    const wireBlock = createTrayBlock(16, (ctx, s) => {
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(2, s-2);
+        ctx.lineTo(s-2, 2);
+        ctx.stroke();
+    });
+    wireBlock.dataset.category = 'tool';
+    wireBlock.dataset.value = 'wire';
+    wireBlock.title = 'WIRE (Tap here, then tap two chips)';
+    wireSection.appendChild(wireBlock);
+    container.appendChild(wireSection);
+
+    // Setup tray drag/select events
     const blocks = document.querySelectorAll('.tray-block');
     blocks.forEach(block => {
-        block.addEventListener('mousedown', (e) => {
+        const handleSelect = (e) => {
             if (GameState.phase !== 'playing') return;
+            
+            if (GameState.selectedTrayPart && GameState.selectedTrayPart.element === block) {
+                GameState.selectedTrayPart = null;
+                block.style.borderColor = '#334433';
+                block.style.background = '#0a140a';
+                GameState.wireStartChip = null;
+            } else {
+                document.querySelectorAll('.tray-block').forEach(b => {
+                    b.style.borderColor = '#334433';
+                    b.style.background = '#0a140a';
+                });
+                
+                block.style.borderColor = '#00ff41';
+                block.style.background = 'rgba(0,255,65,0.3)';
+                
+                GameState.selectedTrayPart = {
+                    category: block.dataset.category,
+                    value: block.dataset.value,
+                    element: block
+                };
+                GameState.wireStartChip = null;
+            }
+            
             GameState.dragState = {
                 type: 'tray_part',
                 category: block.dataset.category,
@@ -1999,7 +2128,10 @@ function setupPartsTray() {
                 element: block
             };
             document.body.style.cursor = 'grabbing';
-        });
+            if (e.touches) e.preventDefault();
+        };
+        block.addEventListener('mousedown', handleSelect);
+        block.addEventListener('touchstart', handleSelect, {passive: false});
     });
 }
 
@@ -2031,6 +2163,15 @@ function createNewChip() {
 }
 
 // ========== 8.5 CIRCUIT BOARD INTERACTION ==========
+
+function hasCycle(start, target) {
+    if (start.id === target.id) return true;
+    for (const childId of target.children) {
+        const child = GameState.chips.find(c => c.id === childId);
+        if (child && hasCycle(start, child)) return true;
+    }
+    return false;
+}
 
 let boardMouse = { x: 0, y: 0 };
 
@@ -2084,6 +2225,38 @@ function setupBoardInteraction() {
         if (clickedChip) {
             const cx = clickedChip.x * CONFIG.CELL_SIZE;
             const cy = clickedChip.y * CONFIG.CELL_SIZE;
+            if (GameState.selectedTrayPart) {
+                if (GameState.selectedTrayPart.category === 'tool' && GameState.selectedTrayPart.value === 'wire') {
+                    if (!GameState.wireStartChip) {
+                        GameState.wireStartChip = clickedChip;
+                        AudioSys.play('place');
+                    } else if (GameState.wireStartChip.id !== clickedChip.id) {
+                        const targetChip = clickedChip;
+                        if (!hasCycle(GameState.wireStartChip, targetChip)) {
+                            if (!GameState.wireStartChip.children.includes(targetChip.id) && targetChip.parents.length === 0) {
+                                GameState.wireStartChip.children.push(targetChip.id);
+                                targetChip.parents.push(GameState.wireStartChip.id);
+                                AudioSys.play('wire');
+                            } else {
+                                AudioSys.play('error');
+                            }
+                        } else {
+                            AudioSys.play('error');
+                        }
+                        GameState.wireStartChip = null;
+                    } else {
+                        GameState.wireStartChip = null;
+                    }
+                    if (e.touches) e.preventDefault();
+                    return;
+                } else if (GameState.selectedTrayPart.category !== 'tool') {
+                    clickedChip.attributes[GameState.selectedTrayPart.category] = GameState.selectedTrayPart.value;
+                    AudioSys.play('place');
+                    if (e.touches) e.preventDefault();
+                    return;
+                }
+            }
+            
             if (GameState.dragState && GameState.dragState.type === 'chip' && GameState.dragState.chip === clickedChip) {
                 // Clicked the X button (top right corner)
                 if (boardMouse.x >= cx + CONFIG.CELL_SIZE - 16 && boardMouse.y <= cy + 16) {
@@ -2105,6 +2278,14 @@ function setupBoardInteraction() {
                 document.body.style.cursor = 'grabbing';
             }
             if (e.touches) e.preventDefault();
+        } else {
+            // Clicked empty space with selection, clear it
+            if (GameState.selectedTrayPart) {
+                GameState.selectedTrayPart.element.style.borderColor = '#334433';
+                GameState.selectedTrayPart.element.style.background = '#0a140a';
+                GameState.selectedTrayPart = null;
+                GameState.wireStartChip = null;
+            }
         }
     };
     
@@ -2148,16 +2329,6 @@ function setupBoardInteraction() {
                 const targetChip = GameState.chips.find(c => c.x === gridX && c.y === gridY);
                 
                 if (targetChip && targetChip !== GameState.dragState.fromChip) {
-                    // Check for cycle (DFS)
-                    const hasCycle = (start, target) => {
-                        if (start.id === target.id) return true;
-                        for (const childId of target.children) {
-                            const child = GameState.chips.find(c => c.id === childId);
-                            if (child && hasCycle(start, child)) return true;
-                        }
-                        return false;
-                    };
-                    
                     if (!hasCycle(GameState.dragState.fromChip, targetChip)) {
                         // Prevent duplicate wires and multiple inheritance
                         if (!GameState.dragState.fromChip.children.includes(targetChip.id) && targetChip.parents.length === 0) {
@@ -2297,16 +2468,27 @@ function renderFrame() {
         }
     }
 
-    // Render Player FOV (Field of View)
+    // Render Player FOV (Field of View) with wrap-around support
     const px = GameState.player.x * CONFIG.TILE_SIZE;
     const py = GameState.player.y * CONFIG.TILE_SIZE;
+    const mapW = CONFIG.MAZE_COLS * CONFIG.TILE_SIZE;
+    const mapH = CONFIG.MAZE_ROWS * CONFIG.TILE_SIZE;
     
     mctx.save();
     mctx.fillStyle = 'rgba(0, 255, 65, 0.05)';
     mctx.strokeStyle = 'rgba(0, 255, 65, 0.15)';
     mctx.lineWidth = 1;
     mctx.beginPath();
-    mctx.arc(px, py, GameState.detectRadius * CONFIG.TILE_SIZE, 0, Math.PI * 2);
+    
+    for (let ox of [-1, 0, 1]) {
+        for (let oy of [-1, 0, 1]) {
+            const cx = px + ox * mapW;
+            const cy = py + oy * mapH;
+            mctx.moveTo(cx + GameState.detectRadius * CONFIG.TILE_SIZE, cy);
+            mctx.arc(cx, cy, GameState.detectRadius * CONFIG.TILE_SIZE, 0, Math.PI * 2);
+        }
+    }
+    
     mctx.fill();
     mctx.stroke();
     mctx.restore();
@@ -2345,8 +2527,13 @@ function renderFrame() {
         // Chip background
         bctx.fillStyle = '#0f1f0f';
         bctx.fillRect(cx + 2, cy + 2, CONFIG.CELL_SIZE - 4, CONFIG.CELL_SIZE - 4);
-        bctx.strokeStyle = (GameState.dragState && GameState.dragState.chip === chip) ? '#00ff41' : '#2a3a2a';
-        bctx.lineWidth = 1;
+        
+        let strokeColor = '#2a3a2a';
+        if (GameState.dragState && GameState.dragState.chip === chip) strokeColor = '#00ff41';
+        else if (GameState.wireStartChip === chip) strokeColor = '#ffff00';
+        
+        bctx.strokeStyle = strokeColor;
+        bctx.lineWidth = strokeColor !== '#2a3a2a' ? 2 : 1;
         bctx.strokeRect(cx + 2, cy + 2, CONFIG.CELL_SIZE - 4, CONFIG.CELL_SIZE - 4);
         
         // Get resolved attributes for rendering
