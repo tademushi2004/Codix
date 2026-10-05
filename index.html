@@ -2656,29 +2656,33 @@ function init() {
         }
     });
 
-    document.addEventListener('visibilitychange', () => {
+    const resumeAudio = () => {
+        if (!AudioSys.ctx) return;
+        
+        if (AudioSys.ctx.state === 'closed') {
+            AudioSys.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        } else if (AudioSys.ctx.state !== 'running') {
+            AudioSys.ctx.resume();
+        }
+
+        if (GameState.phase === 'playing' && !AudioSys.bgmInterval) {
+            AudioSys.startBGM();
+        }
+    };
+
+    document.addEventListener('touchstart', resumeAudio, { passive: true });
+    document.addEventListener('mousedown', resumeAudio, { passive: true });
+
+    const handleVisibility = () => {
         if (document.visibilityState === 'visible') {
-            if (AudioSys.ctx && AudioSys.ctx.state === 'suspended') {
-                AudioSys.ctx.resume();
-            }
-            if (GameState.phase === 'playing') {
-                AudioSys.startBGM();
-            }
+            resumeAudio();
         } else {
             AudioSys.stopBGM();
         }
-    });
-
-    const resumeAudio = () => {
-        if (AudioSys.ctx && AudioSys.ctx.state === 'suspended') {
-            AudioSys.ctx.resume();
-            if (GameState.phase === 'playing' && !AudioSys.bgmInterval) {
-                AudioSys.startBGM();
-            }
-        }
     };
-    document.addEventListener('touchstart', resumeAudio, { passive: true });
-    document.addEventListener('mousedown', resumeAudio, { passive: true });
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pageshow', handleVisibility);
+    window.addEventListener('pagehide', () => AudioSys.stopBGM());
 
     // Setup parts tray
     setupPartsTray();
