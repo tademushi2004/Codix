@@ -281,24 +281,29 @@ html, body {
     height: 100%;
 }
 
+#right-hud-tools { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
 #new-chip-btn {
     font-family: var(--font-pixel);
-    font-size: 6px;
+    font-size: 8px;
     color: var(--text-accent);
     background: #0a1a0a;
     border: 1px solid var(--wire-green);
-    padding: 4px 8px;
+    padding: 6px 12px;
     cursor: pointer;
-    letter-spacing: 1px;
-    transition: background 0.15s, box-shadow 0.15s;
-    margin-left: 4px;
-    white-space: nowrap;
+    border-radius: 4px;
 }
-
-#new-chip-btn:hover {
-    background: #0f2a0f;
-    box-shadow: 0 0 8px rgba(0,255,65,0.3);
+#new-chip-btn:hover { background: #1a3a1a; }
+#reset-all-btn {
+    font-family: var(--font-pixel);
+    font-size: 8px;
+    color: #ff3333;
+    background: #331111;
+    border: 1px solid #ff3333;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 4px;
 }
+#reset-all-btn:hover { background: #551111; }
 
 /* Circuit Board */
 #board-wrapper {
@@ -431,22 +436,22 @@ html, body {
 
 @media (max-width: 600px) {
     :root { --hud-height: auto; --tray-height: auto; }
-    #left-hud { flex-wrap: wrap; padding: 6px 10px; gap: 4px; min-height: 50px; justify-content: flex-start; }
-    .stat-item { flex: 1 1 45%; margin-bottom: 2px; justify-content: flex-start; }
+    #left-hud { flex-wrap: wrap; padding: 6px 10px; gap: 4px; min-height: 50px; justify-content: center; }
+    .stat-item { flex: 1 1 45%; margin-bottom: 2px; justify-content: center; }
     #time-text-display { margin-left: 0 !important; }
     #title-logo { font-size: 28px; letter-spacing: 6px; }
     #press-start { font-size: 9px; }
     .heart { width: 12px; height: 12px; }
     #exp-bar-outer { width: 50px; }
     
-    #right-hud { justify-content: space-between; padding: 0 10px; min-height: 48px; }
+    #right-hud { padding: 0 10px; min-height: 36px; justify-content: center; }
     #what-space-title { font-size: 10px; }
-    #right-hud-tools button { font-size: 10px; padding: 8px 12px; min-height: 48px; }
+    #right-hud-tools button { font-size: 10px; padding: 10px 16px; }
     
     #parts-tray { padding: 8px; }
-    .tray-block { width: 48px; height: 48px; }
-    #tray-blocks { gap: 12px; }
-    .tray-section { gap: 12px; }
+    .tray-block { width: 40px; height: 40px; }
+    #tray-blocks { gap: 8px; flex-wrap: wrap; justify-content: flex-start; }
+    .tray-section { gap: 8px; flex-wrap: wrap; border-right: none; }
 }
     </style>
 </head>
@@ -491,14 +496,14 @@ html, body {
     <div id="right-panel" class="panel">
         <div id="right-hud">
             <span id="what-space-title">WHAT SPACE</span>
-            <div id="right-hud-tools">
-                <button id="new-chip-btn">NEW CHIP</button>
-                <button id="reset-all-btn">RESET ALL</button>
-            </div>
         </div>
         <div id="parts-tray">
             <div id="tray-label">PARTS TRAY</div>
             <div id="tray-blocks"></div>
+            <div id="right-hud-tools">
+                <button id="new-chip-btn">NEW CHIP</button>
+                <button id="reset-all-btn">RESET ALL</button>
+            </div>
         </div>
         <div id="board-wrapper">
             <canvas id="board-canvas"></canvas>
@@ -2130,7 +2135,7 @@ function createNewChip() {
     const chip = {
         id: GameState.nextChipId++,
         x: Math.floor(CONFIG.BOARD_COLS / 2),
-        y: Math.floor(CONFIG.BOARD_ROWS / 2),
+        y: 1,
         attributes: {
             shape: null,
             color: null,
@@ -2656,6 +2661,14 @@ function init() {
             AudioSys.ctx.resume();
         }
     });
+
+    const resumeAudio = () => {
+        if (AudioSys.ctx && AudioSys.ctx.state === 'suspended') {
+            AudioSys.ctx.resume();
+        }
+    };
+    document.addEventListener('touchstart', resumeAudio, { passive: true });
+    document.addEventListener('mousedown', resumeAudio, { passive: true });
 
     // Setup parts tray
     setupPartsTray();
