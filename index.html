@@ -661,7 +661,7 @@ const CUD_COLORS = {
     magenta: '#CC79A7',
 };
 
-const SHAPES = ['triangle', 'square', 'pentagon', 'hexagon', 'circle', 'star'];
+const SHAPES = ['triangle', 'square', 'circle', 'star'];
 const COLORS = ['orange', 'cyan', 'magenta'];
 const TEXTURES = ['solid', 'striped'];
 const VALENCES = ['harmful', 'beneficial', 'neutral'];
@@ -1258,12 +1258,12 @@ function spawnObject() {
                 const isEdge = (r === 0 || r === CONFIG.MAZE_ROWS - 1 || c === 0 || c === CONFIG.MAZE_COLS - 1);
                 let valid = true;
                 
-                if (motion === 'static') {
-                    // Check distance from player to avoid trapping
-                    const dx = c + 0.5 - GameState.player.x;
-                    const dy = r + 0.5 - GameState.player.y;
-                    if (Math.sqrt(dx*dx + dy*dy) < 3.0) valid = false;
-                } else {
+                // Check distance from player for ALL objects to avoid spawning exactly on player
+                const dx = c + 0.5 - GameState.player.x;
+                const dy = r + 0.5 - GameState.player.y;
+                if (Math.sqrt(dx*dx + dy*dy) < 3.0) valid = false;
+                
+                if (motion === 'moving') {
                     // Moving objects prefer edges for initial spawn
                     if (!isEdge) valid = false;
                 }
